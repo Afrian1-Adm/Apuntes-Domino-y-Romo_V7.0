@@ -1,0 +1,1339 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <script src="offline-mode.js"></script>
+    <script src="vista-app.js"></script>
+    <meta name="theme-color" content="#0b1329">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <link rel="manifest" href="manifest.json">
+    <title>Historial de Partidas - Dominó</title>
+    
+    <!-- Script de carga inmediata para evitar destellos de tema -->
+    <script>
+        const mediaQueriesHistorialOriginales = [];
+
+        function esAppInstaladaHistorial() {
+            return window.matchMedia('(display-mode: standalone)').matches
+                || window.navigator.standalone === true;
+        }
+
+        function aplicarMediaQueriesHistorial(anchoObjetivo) {
+            const procesarReglas = reglas => {
+                for (const regla of reglas) {
+                    if (regla.type !== CSSRule.MEDIA_RULE) continue;
+
+                    let registro = mediaQueriesHistorialOriginales.find(item => item.regla === regla);
+                    if (!registro) {
+                        registro = { regla, media: regla.media.mediaText };
+                        mediaQueriesHistorialOriginales.push(registro);
+                    }
+
+                    const mediaOriginal = registro.media;
+                    const maximos = [...mediaOriginal.matchAll(/max-width\s*:\s*([\d.]+)px/gi)]
+                        .map(coincidencia => Number(coincidencia[1]));
+                    const minimos = [...mediaOriginal.matchAll(/min-width\s*:\s*([\d.]+)px/gi)]
+                        .map(coincidencia => Number(coincidencia[1]));
+
+                    if (maximos.length || minimos.length) {
+                        const cumpleMax = maximos.every(maximo => anchoObjetivo <= maximo);
+                        const cumpleMin = minimos.every(minimo => anchoObjetivo >= minimo);
+                        regla.media.mediaText = cumpleMax && cumpleMin ? 'all' : 'not all';
+                    }
+                }
+            };
+
+            for (const hoja of document.styleSheets) {
+                try {
+                    procesarReglas(hoja.cssRules || []);
+                } catch (error) {
+                    console.warn('No se pudo adaptar una hoja de estilos:', error);
+                }
+            }
+        }
+
+        function restaurarMediaQueriesHistorial() {
+            for (const registro of mediaQueriesHistorialOriginales) {
+                registro.regla.media.mediaText = registro.media;
+            }
+        }
+
+        function ajustarEscalaAppHistorial() {
+            if (window.AppViewMode?.apply) {
+                window.AppViewMode.apply();
+                return;
+            }
+
+            const html = document.documentElement;
+            const agenteMovil = navigator.userAgentData?.mobile === true
+                || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+            const esDispositivoTactil = window.matchMedia('(pointer: coarse)').matches
+                || agenteMovil;
+
+            if (!esAppInstaladaHistorial() || !esDispositivoTactil) {
+                html.classList.remove('app-mobile-layout', 'app-viewport-corregido');
+                restaurarMediaQueriesHistorial();
+                return;
+            }
+
+            html.classList.add('app-mobile-layout');
+            const anchoLienzo = Math.max(window.innerWidth || 0, html.clientWidth || 0);
+            const anchoPantalla = Number(window.screen?.width) || 0;
+            const anchoDisponible = Number(window.screen?.availWidth) || anchoPantalla;
+            const dpr = Math.max(Number(window.devicePixelRatio) || 1, 1);
+            let anchoMovil = Math.min(
+                ...[anchoPantalla, anchoDisponible].filter(valor => valor > 0)
+            );
+
+            if (anchoMovil > 600) {
+                const anchoCorregido = anchoMovil / dpr;
+                anchoMovil = anchoCorregido >= 280 && anchoCorregido <= 600
+                    ? anchoCorregido
+                    : 390;
+            }
+
+            aplicarMediaQueriesHistorial(anchoMovil);
+            const usaLienzoDeEscritorio = anchoLienzo > 760
+                && anchoLienzo > anchoMovil * 1.35;
+
+            if (!usaLienzoDeEscritorio) {
+                html.classList.remove('app-viewport-corregido');
+                html.style.removeProperty('--app-mobile-width');
+                html.style.removeProperty('--app-mobile-height');
+                html.style.removeProperty('--app-mobile-scale');
+                return;
+            }
+
+            const escala = Math.min(Math.max(anchoLienzo / anchoMovil, 1), 4);
+            html.style.setProperty('--app-mobile-width', `${anchoMovil}px`);
+            html.style.setProperty('--app-mobile-height', `${Math.ceil(window.innerHeight / escala)}px`);
+            html.style.setProperty('--app-mobile-scale', escala.toFixed(4));
+            html.classList.add('app-viewport-corregido');
+        }
+
+        (function() {
+            ajustarEscalaAppHistorial();
+            const savedTheme = localStorage.getItem('theme') || 'dark';
+            if (savedTheme === 'light') {
+                document.documentElement.classList.add('light-mode');
+            }
+        })();
+
+        document.addEventListener('DOMContentLoaded', ajustarEscalaAppHistorial);
+        window.addEventListener('load', ajustarEscalaAppHistorial);
+        window.addEventListener('resize', ajustarEscalaAppHistorial);
+        window.addEventListener('orientationchange', ajustarEscalaAppHistorial);
+    </script>
+
+    <!-- Supabase Client -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="app-notifications.js"></script>
+    <style>
+        :root {
+            --bg-color: #0b1329;
+            --card-bg: #152238;
+            --card-inner: #1c2d4a;
+            --text-color: #f8fafc;
+            --text-muted: #94a3b8;
+            --accent-green: #10b981;
+            --accent-red: #ef4444;
+            --accent-blue: #3b82f6;
+            --accent-amber: #f59e0b;
+            --border-color: #2a3a5c;
+        }
+
+        /* Variables cuando el modo claro está activo */
+        html.light-mode {
+            --bg-color: #f1f5f9;
+            --card-bg: #ffffff;
+            --card-inner: #e2e8f0;
+            --text-color: #0f172a;
+            --text-muted: #64748b;
+            --accent-green: #059669;
+            --accent-red: #dc2626;
+            --accent-blue: #2563eb;
+            --accent-amber: #d97706;
+            --border-color: #cbd5e1;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 20px;
+            transition: background-color 0.3s, color 0.3s;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .header-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+
+        h1 {
+            margin: 0;
+            font-size: 1.8rem;
+            text-align: center;
+            flex: 1;
+        }
+
+        .header-actions {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .btn-lobby {
+            background-color: var(--card-bg);
+            border: 1px solid var(--border-color);
+            color: var(--text-color);
+            padding: 10px 16px;
+            border-radius: 6px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn-lobby:hover {
+            background-color: var(--border-color);
+        }
+
+        /* Tarjetas de estadísticas */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 15px;
+            margin-bottom: 25px;
+        }
+
+        .stat-card {
+            background-color: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            padding: 15px;
+            text-align: center;
+        }
+
+        .stat-card h3 {
+            margin: 0;
+            font-size: 0.9rem;
+            color: var(--text-muted);
+        }
+
+        .stat-card p {
+            margin: 10px 0 0 0;
+            font-size: 1.8rem;
+            font-weight: bold;
+            color: var(--accent-blue);
+        }
+
+        /* Filtros */
+        .filters-container {
+            background-color: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            padding: 15px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            margin-bottom: 25px;
+            align-items: center;
+        }
+
+        .filter-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            flex: 1;
+            min-width: 180px;
+        }
+
+        .filter-group label {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+        }
+
+        .filter-group input, .filter-group select {
+            background-color: var(--card-inner);
+            border: 1px solid var(--border-color);
+            color: var(--text-color);
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 0.95rem;
+        }
+
+        .btn-export {
+            background-color: var(--accent-green);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: opacity 0.2s;
+            align-self: flex-end;
+        }
+
+        .btn-export:hover {
+            opacity: 0.9;
+        }
+
+        /* Tabla */
+        .table-responsive {
+            background-color: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            overflow-x: auto;
+            margin-bottom: 20px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            text-align: left;
+            font-size: 0.95rem;
+        }
+
+        th, td {
+            padding: 12px 15px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        th {
+            background-color: rgba(255, 255, 255, 0.03);
+            color: var(--text-muted);
+            font-weight: 600;
+        }
+
+        tr:last-child td {
+            border-bottom: none;
+        }
+
+        /* Badges y etiquetas */
+        .badge-modalidad {
+            background-color: rgba(59, 130, 246, 0.15);
+            color: var(--accent-blue);
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-weight: bold;
+            font-size: 0.85rem;
+        }
+
+        .badge-equipo {
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.85rem;
+            font-weight: bold;
+        }
+
+        .badge-equipo.a {
+            background-color: rgba(16, 185, 129, 0.15);
+            color: var(--accent-green);
+        }
+
+        .badge-equipo.b {
+            background-color: rgba(239, 68, 68, 0.15);
+            color: var(--accent-red);
+        }
+
+        .badge-equipo.secondary {
+            background-color: rgba(148, 163, 184, 0.15);
+            color: var(--text-muted);
+        }
+
+        .badge-lisa {
+            background-color: rgba(11, 245, 62, 0.15);
+            color: var(--text-color);
+            border: 1px solid rgba(27, 255, 110, 0.4);
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            display: inline-block;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        /* Paginación */
+        .pagination-container {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            color: var(--text-muted);
+            font-size: 0.9rem;
+        }
+
+        .pagination-buttons {
+            display: flex;
+            gap: 5px;
+        }
+
+        .pag-btn {
+            background-color: var(--card-bg);
+            border: 1px solid var(--border-color);
+            color: var(--text-color);
+            padding: 6px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        .pag-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .pag-btn.active {
+            background-color: var(--accent-blue);
+            border-color: var(--accent-blue);
+            color: white;
+        }
+
+        /* Presentación unificada con el resto de la aplicación */
+        body {
+            background:
+                radial-gradient(circle at 10% 0%, rgba(59, 130, 246, 0.1), transparent 28rem),
+                var(--bg-color);
+        }
+
+        .page-nav-actions {
+            display: flex;
+            justify-content: space-between;
+            align-items: stretch;
+            gap: 12px;
+            margin-bottom: 14px;
+        }
+
+        .page-nav-actions .btn-lobby {
+            min-height: 48px;
+            padding: 11px 18px;
+            border-radius: 14px;
+            color: var(--accent-blue);
+            box-shadow: 0 10px 28px rgba(37, 99, 235, 0.12);
+            transition: transform 0.18s ease, box-shadow 0.18s ease, background-color 0.25s ease;
+        }
+
+        .page-nav-actions .btn-lobby:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 14px 34px rgba(37, 99, 235, 0.17);
+        }
+
+        .lobby-button { min-width: 190px; }
+        .theme-button { min-width: 122px; justify-content: center; }
+
+        .page-header {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            margin-bottom: 18px;
+            padding: 22px 25px;
+            border: 1px solid var(--border-color);
+            border-radius: 20px;
+            background: var(--card-bg);
+            box-shadow: 0 12px 32px rgba(37, 99, 235, 0.12);
+        }
+
+        .page-header img {
+            width: 50px;
+            height: 50px;
+            object-fit: contain;
+            flex: 0 0 50px;
+        }
+
+        .page-header h1 {
+            margin: 0;
+            text-align: left;
+            font-size: 1.85rem;
+            line-height: 1.12;
+            letter-spacing: -0.035em;
+        }
+
+        .page-header p {
+            margin: 5px 0 0;
+            color: var(--text-muted);
+            font-size: 0.85rem;
+        }
+
+        .stats-grid,
+        .filters-container,
+        .table-responsive {
+            box-shadow: 0 10px 28px rgba(37, 99, 235, 0.09);
+        }
+
+        .mobile-filters-toggle,
+        .mobile-history-list {
+            display: none;
+        }
+
+        .mobile-filters-toggle {
+            width: 100%;
+            min-height: 48px;
+            margin-bottom: 12px;
+            padding: 10px 14px;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            border: 1px solid var(--border-color);
+            border-radius: 14px;
+            background: var(--card-bg);
+            color: var(--text-color);
+            font-weight: 800;
+            box-shadow: 0 8px 24px rgba(37, 99, 235, 0.1);
+        }
+
+        .mobile-filters-toggle span:last-child {
+            color: var(--accent-blue);
+            font-size: 0.78rem;
+        }
+
+        .mobile-match-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 17px;
+            padding: 14px;
+            box-shadow: 0 9px 25px rgba(37, 99, 235, 0.09);
+        }
+
+        .mobile-match-top,
+        .mobile-match-footer {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+        }
+
+        .mobile-match-date {
+            font-size: 0.78rem;
+            font-weight: 800;
+        }
+
+        .mobile-match-time {
+            display: block;
+            margin-top: 2px;
+            color: var(--text-muted);
+            font-size: 0.7rem;
+            font-weight: 500;
+        }
+
+        .mobile-scoreboard {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) 54px;
+            gap: 8px 12px;
+            align-items: center;
+            margin: 12px 0;
+            padding: 11px 0;
+            border-top: 1px solid var(--border-color);
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .mobile-team-name {
+            min-width: 0;
+            font-size: 0.82rem;
+            font-weight: 750;
+            line-height: 1.3;
+            overflow-wrap: anywhere;
+        }
+
+        .mobile-team-score {
+            text-align: right;
+            font-size: 1.25rem;
+            font-weight: 900;
+        }
+
+        .mobile-team-score.winner { color: var(--accent-green); }
+
+        .mobile-match-footer {
+            color: var(--text-muted);
+            font-size: 0.72rem;
+        }
+
+        .mobile-empty {
+            padding: 24px 16px;
+            text-align: center;
+            color: var(--text-muted);
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+        }
+
+        /* Vista web compacta cuando se activa Escritorio dentro de la PWA móvil. */
+        html.app-desktop-layout body { padding: 8px 7px 18px; }
+        html.app-desktop-layout .container { max-width: none; }
+        html.app-desktop-layout .page-nav-actions {
+            gap: 6px;
+            margin-bottom: 7px;
+        }
+        html.app-desktop-layout .page-nav-actions .btn-lobby {
+            min-height: 36px;
+            padding: 6px 11px;
+            border-radius: 10px;
+            font-size: 0.8rem;
+        }
+        html.app-desktop-layout .lobby-button { min-width: 150px; }
+        html.app-desktop-layout .theme-button { min-width: 102px; }
+        html.app-desktop-layout .page-header {
+            gap: 9px;
+            margin-bottom: 7px;
+            padding: 10px 13px;
+            border-radius: 14px;
+        }
+        html.app-desktop-layout .page-header img {
+            width: 36px;
+            height: 36px;
+            flex-basis: 36px;
+        }
+        html.app-desktop-layout .page-header h1 { font-size: 1.35rem; }
+        html.app-desktop-layout .page-header p { margin-top: 2px; font-size: 0.76rem; }
+        html.app-desktop-layout .stats-grid {
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 6px;
+            margin-bottom: 7px;
+        }
+        html.app-desktop-layout .stat-card {
+            min-width: 0;
+            padding: 8px 6px;
+            border-radius: 10px;
+        }
+        html.app-desktop-layout .stat-card h3 { font-size: 0.72rem; }
+        html.app-desktop-layout .stat-card p { margin-top: 5px; font-size: 1.25rem; }
+        html.app-desktop-layout .filters-container {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr)) auto;
+            gap: 6px;
+            margin-bottom: 7px;
+            padding: 8px;
+            border-radius: 10px;
+        }
+        html.app-desktop-layout .filter-group { min-width: 0; gap: 3px; }
+        html.app-desktop-layout .filter-group label { font-size: 0.7rem; }
+        html.app-desktop-layout .filter-group input,
+        html.app-desktop-layout .filter-group select {
+            min-width: 0;
+            padding: 6px 7px;
+            font-size: 0.78rem;
+        }
+        html.app-desktop-layout .btn-export {
+            padding: 7px 10px;
+            font-size: 0.78rem;
+        }
+        html.app-desktop-layout .table-responsive {
+            margin-bottom: 7px;
+            overflow-x: hidden;
+            border-radius: 10px;
+        }
+        html.app-desktop-layout .history-data-table {
+            table-layout: fixed;
+            font-size: 0.78rem;
+        }
+        html.app-desktop-layout .history-data-table th,
+        html.app-desktop-layout .history-data-table td { padding: 5px 4px; }
+        html.app-desktop-layout .history-data-table th:nth-child(8),
+        html.app-desktop-layout .history-data-table td:nth-child(8) {
+            padding-right: 2px;
+            text-align: right;
+        }
+        html.app-desktop-layout .history-data-table th:nth-child(9),
+        html.app-desktop-layout .history-data-table td:nth-child(9) {
+            padding-left: 2px;
+            text-align: left !important;
+        }
+        html.app-desktop-layout .badge-modalidad,
+        html.app-desktop-layout .badge-equipo,
+        html.app-desktop-layout .badge-lisa {
+            padding: 3px 5px;
+            font-size: 0.7rem;
+        }
+        html.app-desktop-layout .pagination-container { font-size: 0.78rem; }
+        html.app-desktop-layout .pag-btn { padding: 5px 9px; font-size: 0.76rem; }
+
+        @media (max-width: 700px) {
+            body { padding: 16px 12px 30px; }
+
+            .page-nav-actions { gap: 10px; }
+            .lobby-button { min-width: 0; flex: 1; }
+            .theme-button { min-width: 112px; }
+
+            .page-header {
+                padding: 18px 16px;
+                border-radius: 19px;
+            }
+
+            .page-header img { width: 46px; height: 46px; flex-basis: 46px; }
+            .page-header h1 { font-size: 1.5rem; }
+            .page-header p { font-size: 0.76rem; }
+
+            .stats-grid {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                gap: 0;
+                margin-bottom: 16px;
+                padding: 8px;
+                background: var(--card-bg);
+                border: 1px solid var(--border-color);
+                border-radius: 17px;
+            }
+
+            .stat-card {
+                min-width: 0;
+                padding: 10px 5px;
+                border: 0;
+                border-radius: 0;
+                background: transparent;
+            }
+
+            .stat-card:nth-child(1),
+            .stat-card:nth-child(3) { border-right: 1px solid var(--border-color); }
+
+            .stat-card:nth-child(1),
+            .stat-card:nth-child(2) { border-bottom: 1px solid var(--border-color); }
+
+            .stat-card h3 { font-size: 0.7rem; line-height: 1.25; }
+            .stat-card p { margin-top: 5px; font-size: 1.35rem; }
+
+            .mobile-filters-toggle { display: flex; }
+
+            .filters-container {
+                display: none;
+                margin-bottom: 16px;
+                padding: 14px;
+            }
+
+            .filters-container.open { display: flex; }
+            .filter-group { min-width: 100%; }
+            .btn-export { width: 100%; min-height: 44px; }
+
+            .table-responsive { display: none; }
+
+            .mobile-history-list {
+                display: flex;
+                flex-direction: column;
+                gap: 11px;
+                margin-bottom: 18px;
+            }
+
+            .pagination-container {
+                flex-direction: column;
+                align-items: stretch;
+                gap: 10px;
+                text-align: center;
+            }
+
+            .pagination-buttons { justify-content: center; }
+        }
+
+        @media (max-width: 390px) {
+            .page-nav-actions .btn-lobby { padding: 10px 12px; font-size: 0.84rem; }
+            .theme-button { min-width: 104px; }
+            .page-header { padding: 16px 14px; }
+            .page-header h1 { font-size: 1.3rem; }
+            .mobile-scoreboard { grid-template-columns: minmax(0, 1fr) 46px; }
+        }
+
+        html.app-viewport-corregido { overflow-x: hidden; }
+
+        html.app-viewport-corregido body {
+            width: var(--app-mobile-width);
+            min-height: var(--app-mobile-height);
+        }
+
+        @supports (zoom: 1) {
+            html.app-viewport-corregido body { zoom: var(--app-mobile-scale); }
+        }
+
+        @supports not (zoom: 1) {
+            html.app-viewport-corregido body {
+                transform: scale(var(--app-mobile-scale));
+                transform-origin: top left;
+            }
+        }
+    </style>
+
+    <!-- Ajuste exclusivo para iPhone/iPad: respeta notch, Dynamic Island y barra inferior
+         sin cambiar el diseño de Android ni escritorio. -->
+    <script id="ios-safe-area-fix">
+        (function () {
+            const esIOS =
+                /iPhone|iPad|iPod/i.test(navigator.userAgent) ||
+                (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
+            if (!esIOS) return;
+
+            document.documentElement.classList.add('ios-safe-area');
+
+            function aplicarSafeAreaIOS() {
+                const body = document.body;
+                if (!body) return;
+
+                if (body.dataset.iosSafeAreaCapturada !== '1') {
+                    body.dataset.iosPaddingTop = body.style.paddingTop || '';
+                    body.dataset.iosPaddingRight = body.style.paddingRight || '';
+                    body.dataset.iosPaddingBottom = body.style.paddingBottom || '';
+                    body.dataset.iosPaddingLeft = body.style.paddingLeft || '';
+                    body.dataset.iosSafeAreaCapturada = '1';
+                }
+
+                body.style.paddingTop = body.dataset.iosPaddingTop;
+                body.style.paddingRight = body.dataset.iosPaddingRight;
+                body.style.paddingBottom = body.dataset.iosPaddingBottom;
+                body.style.paddingLeft = body.dataset.iosPaddingLeft;
+
+                const estilos = getComputedStyle(body);
+
+                body.style.paddingTop =
+                    `calc(${estilos.paddingTop} + env(safe-area-inset-top, 0px))`;
+                body.style.paddingRight =
+                    `calc(${estilos.paddingRight} + env(safe-area-inset-right, 0px))`;
+                body.style.paddingBottom =
+                    `calc(${estilos.paddingBottom} + env(safe-area-inset-bottom, 0px))`;
+                body.style.paddingLeft =
+                    `calc(${estilos.paddingLeft} + env(safe-area-inset-left, 0px))`;
+            }
+
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', aplicarSafeAreaIOS, { once: true });
+            } else {
+                aplicarSafeAreaIOS();
+            }
+
+            window.addEventListener('orientationchange', function () {
+                window.setTimeout(aplicarSafeAreaIOS, 180);
+            });
+        })();
+    </script>
+
+</head>
+<body>
+
+    <div class="container">
+        <div class="page-nav-actions">
+            <button class="btn-lobby lobby-button" type="button" onclick="window.location.href='lobby.html'">
+                ← Volver al lobby
+            </button>
+            <button id="historialThemeToggle" class="btn-lobby theme-button" type="button" onclick="cambiarTema()">
+                <span class="theme-icon" aria-hidden="true">🌙</span>
+                <span class="theme-label">Oscuro</span>
+            </button>
+        </div>
+
+        <header class="page-header">
+            <img src="logo.png" alt="Logo del Club Dominó y Romo">
+            <div>
+                <h1>Historial de Partidas</h1>
+                <p>Resultados, estadísticas y partidas cerradas del club</p>
+            </div>
+        </header>
+
+        <!-- Estadísticas generales -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <h3>Partidas Totales</h3>
+                <p id="stat-total">0</p>
+            </div>
+            <div class="stat-card">
+                <h3>Partidas Lisas (Caponas)</h3>
+                <p id="stat-lisas" style="color: var(--accent-amber);">0</p>
+            </div>
+            <div class="stat-card">
+                <h3>Promedio de Puntos</h3>
+                <p id="stat-pts-prom">0</p>
+            </div>
+            <div class="stat-card">
+                <h3>Promedio de Rondas</h3>
+                <p id="stat-rondas-prom">0</p>
+            </div>
+        </div>
+
+        <!-- Filtros -->
+        <button id="filtrosToggle" class="mobile-filters-toggle" type="button" onclick="toggleFiltrosMovil()" aria-expanded="false" aria-controls="filtrosPanel">
+            <span>🔎 Filtros del historial</span>
+            <span class="filter-toggle-label">Mostrar</span>
+        </button>
+
+        <div id="filtrosPanel" class="filters-container">
+            <div class="filter-group">
+                <label for="filtro-desde">Desde</label>
+                <input type="date" id="filtro-desde" onchange="aplicarFiltros()">
+            </div>
+            <div class="filter-group">
+                <label for="filtro-hasta">Hasta</label>
+                <input type="date" id="filtro-hasta" onchange="aplicarFiltros()">
+            </div>
+            <div class="filter-group">
+                <label for="filtro-jugador">Jugador</label>
+                <input type="text" id="filtro-jugador" placeholder="Nombre de jugador..." oninput="aplicarFiltros()">
+            </div>
+            <div class="filter-group">
+                <label for="filtro-modalidad">Modalidad (Meta)</label>
+                <select id="filtro-modalidad" onchange="aplicarFiltros()">
+                    <option value="">Todas</option>
+                    <option value="100">100 puntos</option>
+                    <option value="150">150 puntos</option>
+                    <option value="200">200 puntos</option>
+                </select>
+            </div>
+            <button class="btn-export" onclick="exportarCSV()">Exportar CSV</button>
+        </div>
+
+        <!-- Tabla de datos -->
+        <div class="table-responsive">
+            <table class="history-data-table">
+                <colgroup>
+                    <col style="width: 11%;">
+                    <col style="width: 11%;">
+                    <col style="width: 8%;">
+                    <col style="width: 20%;">
+                    <col style="width: 7%;">
+                    <col style="width: 20%;">
+                    <col style="width: 7%;">
+                    <col style="width: 10%;">
+                    <col style="width: 6%;">
+                </colgroup>
+                <thead>
+                    <tr>
+                        <th>Fecha</th>
+                        <th>Hora</th>
+                        <th>Meta</th>
+                        <th>Equipo A</th>
+                        <th style="text-align: center;">Pts A</th>
+                        <th>Equipo B</th>
+                        <th style="text-align: center;">Pts B</th>
+                        <th>Ganador</th>
+                        <th style="text-align: center;">¿Lisa?</th>
+                    </tr>
+                </thead>
+                <tbody id="cuerpo-tabla-historial">
+                    <!-- Se llena instantáneamente por caché o muestra cargando si es primera vez -->
+                    <tr><td colspan="9" style="text-align: center; color: var(--text-muted); padding: 20px 0;">Cargando historial...</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div id="lista-historial-movil" class="mobile-history-list" aria-live="polite">
+            <div class="mobile-empty">Cargando historial...</div>
+        </div>
+
+        <!-- Paginación -->
+        <div class="pagination-container">
+            <span id="info-paginacion">Mostrando 0 partidas</span>
+            <div class="pagination-buttons" id="controles-paginacion"></div>
+        </div>
+    </div>
+
+    <script>
+        function cambiarTema() {
+            const html = document.documentElement;
+            html.classList.toggle('light-mode');
+            const currentTheme = html.classList.contains('light-mode') ? 'light' : 'dark';
+            localStorage.setItem('theme', currentTheme);
+            actualizarBotonTema();
+        }
+
+        function actualizarBotonTema() {
+            const boton = document.getElementById('historialThemeToggle');
+            if (!boton) return;
+            const claro = document.documentElement.classList.contains('light-mode');
+            boton.querySelector('.theme-icon').textContent = claro ? '☀️' : '🌙';
+            boton.querySelector('.theme-label').textContent = claro ? 'Claro' : 'Oscuro';
+            boton.setAttribute('aria-label', claro ? 'Cambiar a modo oscuro' : 'Cambiar a modo claro');
+            boton.setAttribute('title', claro ? 'Cambiar a modo oscuro' : 'Cambiar a modo claro');
+        }
+
+        function toggleFiltrosMovil() {
+            const panel = document.getElementById('filtrosPanel');
+            const boton = document.getElementById('filtrosToggle');
+            const abierto = panel.classList.toggle('open');
+            boton.setAttribute('aria-expanded', String(abierto));
+            boton.querySelector('.filter-toggle-label').textContent = abierto ? 'Ocultar' : 'Mostrar';
+        }
+
+        function escaparHTML(valor) {
+            return String(valor ?? '').replace(/[&<>'"]/g, caracter => ({
+                '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
+            })[caracter]);
+        }
+
+        const SUPABASE_URL = 'https://kzbslfwupzwczmjqfjem.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt6YnNsZnd1cHp3Y3ptanFmamVtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODcxNDI1MzksImV4cCI6MjEwMjcxODUzOX0.qeeh2FV3zKRet-jRMVvJUwBm9jYHsLbWSYWIao574qc';
+
+        var supabase =
+            window.supabaseClient ||
+            window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        if (!window.supabaseClient && supabase) {
+            window.supabaseClient = supabase;
+        }
+
+        let cachePartidas = [];
+        let cachePerfiles = {};
+        let cacheMesas = {};
+        let listaFiltrada = [];
+        let paginaActual = 1;
+        const porPagina = 20;
+        const cacheHistorialKey = 'cache_historial_domino_v1';
+        let firmaHistorialRenderizada = '';
+
+        function firmaDatosHistorial(valor) {
+            const normalizar = dato => {
+                if (Array.isArray(dato)) {
+                    return dato.map(normalizar).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
+                }
+                if (dato && typeof dato === 'object') {
+                    return Object.keys(dato).sort().reduce((salida, clave) => {
+                        salida[clave] = normalizar(dato[clave]);
+                        return salida;
+                    }, {});
+                }
+                return dato;
+            };
+            return JSON.stringify(normalizar(valor));
+        }
+
+        // CARGA INSTANTÁNEA DESDE CACHÉ LOCAL AL ABRIR LA PÁGINA
+        const cachedData = localStorage.getItem(cacheHistorialKey);
+        if (cachedData) {
+            try {
+                const parsed = JSON.parse(cachedData);
+                if (parsed.partidas) cachePartidas = parsed.partidas;
+                if (parsed.perfiles) cachePerfiles = parsed.perfiles;
+                if (parsed.mesas) cacheMesas = parsed.mesas;
+                firmaHistorialRenderizada = firmaDatosHistorial(parsed);
+            } catch (e) {
+                console.error('Error al leer caché local de historial:', e);
+            }
+        }
+
+        window.addEventListener('DOMContentLoaded', async () => {
+            actualizarBotonTema();
+
+            // Si hay datos en caché, los pintamos inmediatamente sin mostrar "Verificando acceso..."
+            if (firmaHistorialRenderizada) {
+                aplicarFiltros();
+            }
+
+            // Fuera de línea se conserva el historial ya guardado y no se
+            // fuerza una validación remota que podría expulsar al usuario.
+            if (navigator.onLine === false) return;
+
+            const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+
+            if (sessionError || !session) {
+                window.location.href = 'index.html';
+                return;
+            }
+
+            await cargarPerfiles();
+            await cargarMesas();
+            await cargarHistorialCompleto();
+        });
+
+        async function cargarPerfiles() {
+            const { data } = await supabase.from('perfiles').select('*');
+            if (data) {
+                cachePerfiles = {};
+                data.forEach(p => {
+                    cachePerfiles[p.id] = p.username || p.nombre_completo || 'Jugador';
+                });
+            }
+        }
+
+        async function cargarMesas() {
+            const { data } = await supabase.from('mesas').select('*');
+            if (data) {
+                cacheMesas = {};
+                data.forEach(m => {
+                    cacheMesas[m.id] = m;
+                });
+            }
+        }
+
+        async function cargarHistorialCompleto() {
+            const { data, error } = await supabase
+                .from('manos')
+                .select('*')
+                .eq('anulada', false)
+                .order('id', { ascending: true });
+
+            if (error) {
+                console.error('Error al cargar historial:', error.message);
+                if (cachePartidas.length === 0) {
+                    document.getElementById('cuerpo-tabla-historial').innerHTML = `<tr><td colspan="9" style="text-align: center; color: var(--accent-red); padding: 20px 0;">Error al cargar: ${error.message}</td></tr>`;
+                }
+                return;
+            }
+
+            const mesasAcumulado = {};
+
+            (data || []).forEach(m => {
+                const mesaId = m.mesa_id;
+                if (!mesasAcumulado[mesaId]) {
+                    const mesaInfo = cacheMesas[mesaId] || { id: mesaId, limite_puntos: 200 };
+                    mesasAcumulado[mesaId] = {
+                        mesa_id: mesaId,
+                        mesas: mesaInfo,
+                        puntos_pareja1: 0,
+                        puntos_pareja2: 0,
+                        rondas: 0,
+                        created_at: m.created_at,
+                        finalizada: false
+                    };
+                }
+
+                const partida = mesasAcumulado[mesaId];
+                
+                if (partida.finalizada) return;
+
+                partida.puntos_pareja1 += (m.puntos_pareja1 || 0);
+                partida.puntos_pareja2 += (m.puntos_pareja2 || 0);
+                partida.rondas++;
+                
+                if (m.created_at) {
+                    partida.created_at = m.created_at;
+                }
+
+                const limite = partida.mesas.limite_puntos || 200;
+
+                if (partida.puntos_pareja1 >= limite || partida.puntos_pareja2 >= limite) {
+                    partida.finalizada = true;
+                }
+            });
+
+            const nuevasPartidas = Object.values(mesasAcumulado)
+                .filter(p => p.finalizada)
+                .sort((a, b) => {
+                    const fechaA = new Date(a.created_at || 0).getTime();
+                    const fechaB = new Date(b.created_at || 0).getTime();
+
+                    return fechaB - fechaA;
+            });
+
+            const payloadToCache = {
+                partidas: nuevasPartidas,
+                perfiles: cachePerfiles,
+                mesas: cacheMesas
+            };
+            const firmaNueva = firmaDatosHistorial(payloadToCache);
+
+            // La vista guardada permanece intacta cuando no hay cambios.
+            if (firmaNueva !== firmaHistorialRenderizada) {
+                cachePartidas = nuevasPartidas;
+                firmaHistorialRenderizada = firmaNueva;
+                try {
+                    localStorage.setItem(cacheHistorialKey, JSON.stringify(payloadToCache));
+                } catch (err) {
+                    console.error('Error al guardar caché local de historial:', err);
+                }
+                aplicarFiltros();
+            }
+        }
+
+        function aplicarFiltros() {
+            const desde = document.getElementById('filtro-desde').value;
+            const hasta = document.getElementById('filtro-hasta').value;
+            const jugadorTxt = document.getElementById('filtro-jugador').value.toLowerCase();
+            const modalidad = document.getElementById('filtro-modalidad').value;
+
+            listaFiltrada = cachePartidas.filter(m => {
+                if (!m.mesas) return false;
+
+                const fechaMano = m.created_at ? m.created_at.split('T')[0] : '';
+                if (desde && fechaMano && fechaMano < desde) return false;
+                if (hasta && fechaMano && fechaMano > hasta) return false;
+
+                if (modalidad && m.mesas.limite_puntos != modalidad) return false;
+
+                if (jugadorTxt) {
+                    const j1 = (cachePerfiles[m.mesas.jugador1_id] || '').toLowerCase();
+                    const j2 = (cachePerfiles[m.mesas.jugador2_id] || '').toLowerCase();
+                    const j3 = (cachePerfiles[m.mesas.jugador3_id] || '').toLowerCase();
+                    const j4 = (cachePerfiles[m.mesas.jugador4_id] || '').toLowerCase();
+
+                    const coincide = j1.includes(jugadorTxt) || j2.includes(jugadorTxt) || j3.includes(jugadorTxt) || j4.includes(jugadorTxt);
+                    if (!coincide) return false;
+                }
+
+                return true;
+            });
+
+            paginaActual = 1;
+            actualizarEstadisticasResumen();
+            renderizarTabla();
+        }
+
+        function actualizarEstadisticasResumen() {
+            const totalPartidas = listaFiltrada.length;
+            let lisasCount = 0;
+            let sumaPts = 0;
+            let sumaRondas = 0;
+
+            listaFiltrada.forEach(m => {
+                const pA = m.puntos_pareja1 || 0;
+                const pB = m.puntos_pareja2 || 0;
+                sumaPts += (pA + pB);
+                sumaRondas += (m.rondas || 1);
+                if (pA === 0 || pB === 0) {
+                    lisasCount++;
+                }
+            });
+
+            const ptsProm = totalPartidas > 0 ? Math.round(sumaPts / totalPartidas) : 0;
+            const rondasProm = totalPartidas > 0 ? Math.round(sumaRondas / totalPartidas) : 0;
+
+            document.getElementById('stat-total').innerText = totalPartidas;
+            document.getElementById('stat-lisas').innerText = lisasCount;
+            document.getElementById('stat-pts-prom').innerText = ptsProm;
+            document.getElementById('stat-rondas-prom').innerText = rondasProm;
+        }
+
+        function renderizarTabla() {
+            const tbody = document.getElementById('cuerpo-tabla-historial');
+            const listaMovil = document.getElementById('lista-historial-movil');
+            const inicio = (paginaActual - 1) * porPagina;
+            const fin = inicio + porPagina;
+            const paginaItems = listaFiltrada.slice(inicio, fin);
+
+            if (paginaItems.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="9" style="text-align: center; color: var(--text-muted); padding: 20px 0;">No se encontraron partidas cerradas.</td></tr>`;
+                listaMovil.innerHTML = `<div class="mobile-empty">No se encontraron partidas cerradas.</div>`;
+                document.getElementById('info-paginacion').innerText = `Mostrando 0 partidas`;
+                document.getElementById('controles-paginacion').innerHTML = '';
+                return;
+            }
+
+            tbody.innerHTML = '';
+            listaMovil.innerHTML = '';
+            paginaItems.forEach(m => {
+                const mesa = m.mesas;
+                
+                const fechaObj = m.created_at ? new Date(m.created_at) : null;
+                const fechaStr = fechaObj ? fechaObj.toLocaleDateString() : 'Finalizada';
+                const horaStr = fechaObj ? fechaObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+                
+                const jA1 = cachePerfiles[mesa.jugador1_id] || 'J1';
+                const jA2 = cachePerfiles[mesa.jugador3_id] || 'J3';
+                const jB1 = cachePerfiles[mesa.jugador2_id] || 'J2';
+                const jB2 = cachePerfiles[mesa.jugador4_id] || 'J4';
+
+                const equipoAStr = `${jA1} & ${jA2}`;
+                const equipoBStr = `${jB1} & ${jB2}`;
+                const equipoASeguro = escaparHTML(equipoAStr);
+                const equipoBSeguro = escaparHTML(equipoBStr);
+
+                const ptsA = m.puntos_pareja1 || 0;
+                const ptsB = m.puntos_pareja2 || 0;
+
+                let ganadorTxt = 'Empate';
+                let ganadorClase = 'secondary';
+                if (ptsA > ptsB) {
+                    ganadorTxt = 'Equipo A';
+                    ganadorClase = 'a';
+                } else if (ptsB > ptsA) {
+                    ganadorTxt = 'Equipo B';
+                    ganadorClase = 'b';
+                }
+
+                const esLisa = (ptsA === 0 || ptsB === 0) ? '<span class="badge-lisa">Sí</span>' : 'No';
+                const esLisaMovil = (ptsA === 0 || ptsB === 0)
+                    ? '<span class="badge-lisa">Lisa</span>'
+                    : '<span>Partida regular</span>';
+
+                tbody.innerHTML += `
+                    <tr>
+                        <td>${fechaStr}</td>
+                        <td style="color: var(--text-muted); font-size: 0.9rem;">${horaStr}</td>
+                        <td><span class="badge-modalidad">${mesa.limite_puntos || 200}</span></td>
+                        <td>${equipoASeguro}</td>
+                        <td style="text-align: center; font-weight: bold; ${ptsA > ptsB ? 'color: var(--accent-green);' : ''}">${ptsA}</td>
+                        <td>${equipoBSeguro}</td>
+                        <td style="text-align: center; font-weight: bold; ${ptsB > ptsA ? 'color: var(--accent-green);' : ''}">${ptsB}</td>
+                        <td><span class="badge-equipo ${ganadorClase}">${ganadorTxt}</span></td>
+                        <td style="text-align: center;">${esLisa}</td>
+                    </tr>
+                `;
+
+                listaMovil.innerHTML += `
+                    <article class="mobile-match-card">
+                        <div class="mobile-match-top">
+                            <div class="mobile-match-date">
+                                ${fechaStr}
+                                <span class="mobile-match-time">${horaStr}</span>
+                            </div>
+                            <span class="badge-modalidad">Meta ${mesa.limite_puntos || 200}</span>
+                        </div>
+
+                        <div class="mobile-scoreboard">
+                            <div class="mobile-team-name">${equipoASeguro}</div>
+                            <div class="mobile-team-score ${ptsA > ptsB ? 'winner' : ''}">${ptsA}</div>
+                            <div class="mobile-team-name">${equipoBSeguro}</div>
+                            <div class="mobile-team-score ${ptsB > ptsA ? 'winner' : ''}">${ptsB}</div>
+                        </div>
+
+                        <div class="mobile-match-footer">
+                            <span class="badge-equipo ${ganadorClase}">${ganadorTxt}</span>
+                            ${esLisaMovil}
+                        </div>
+                    </article>
+                `;
+            });
+
+            const totalPaginas = Math.ceil(listaFiltrada.length / porPagina) || 1;
+            document.getElementById('info-paginacion').innerText = `Mostrando ${inicio + 1} - ${Math.min(fin, listaFiltrada.length)} de ${listaFiltrada.length} partidas`;
+
+            let htmlPags = `<button class="pag-btn" ${paginaActual === 1 ? 'disabled' : ''} onclick="cambiarPagina(-1)">Anterior</button>`;
+            htmlPags += `<button class="pag-btn active">${paginaActual}</button>`;
+            htmlPags += `<button class="pag-btn" ${paginaActual >= totalPaginas ? 'disabled' : ''} onclick="cambiarPagina(1)">Siguiente</button>`;
+            document.getElementById('controles-paginacion').innerHTML = htmlPags;
+        }
+
+        function cambiarPagina(dir) {
+            const totalPaginas = Math.ceil(listaFiltrada.length / porPagina);
+            paginaActual += dir;
+            if (paginaActual < 1) paginaActual = 1;
+            if (paginaActual > totalPaginas) paginaActual = totalPaginas;
+            renderizarTabla();
+        }
+
+        function exportarCSV() {
+            if (listaFiltrada.length === 0) {
+                alert('No hay datos para exportar.');
+                return;
+            }
+
+            let csv = 'Fecha,Hora,Modalidad,Equipo A,Puntos A,Equipo B,Puntos B,Ganador,Lisa\n';
+            listaFiltrada.forEach(m => {
+                const mesa = m.mesas;
+                const fechaObj = m.created_at ? new Date(m.created_at) : null;
+                const fecha = fechaObj ? fechaObj.toLocaleDateString() : 'Finalizada';
+                const hora = fechaObj ? fechaObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+                
+                const eA = `"${cachePerfiles[mesa.jugador1_id]} & ${cachePerfiles[mesa.jugador3_id]}"`;
+                const eB = `"${cachePerfiles[mesa.jugador2_id]} & ${cachePerfiles[mesa.jugador4_id]}"`;
+                const pA = m.puntos_pareja1 || 0;
+                const pB = m.puntos_pareja2 || 0;
+                const ganador = pA > pB ? 'Equipo A' : (pB > pA ? 'Equipo B' : 'Empate');
+                const lisa = (pA === 0 || pB === 0) ? 'Sí' : 'No';
+
+                csv += `${fecha},${hora},${mesa.limite_puntos},${eA},${pA},${eB},${pB},${ganador},${lisa}\n`;
+            });
+
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'historial_partidas_domino.csv';
+            a.click();
+        }
+    </script>
+</body>
+</html>

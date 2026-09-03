@@ -1,0 +1,1793 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <script src="offline-mode.js"></script>
+    <script src="vista-app.js"></script>
+    <meta name="theme-color" content="#0f172a">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <link rel="manifest" href="manifest.json">
+    <title>Salón de Galardones - Club Dominó y Romo</title>
+    
+    <!-- Script de carga inmediata para el tema y la vista de la app instalada -->
+    <script>
+        function esAppInstalada() {
+            return window.matchMedia('(display-mode: standalone)').matches
+                || window.navigator.standalone === true;
+        }
+
+        function ajustarEscalaAppInstalada() {
+            if (window.AppViewMode?.apply) {
+                window.AppViewMode.apply();
+                return;
+            }
+
+            const html = document.documentElement;
+            const agenteMovil = navigator.userAgentData?.mobile === true
+                || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+            const esDispositivoTactil = window.matchMedia('(pointer: coarse)').matches
+                || agenteMovil;
+
+            if (!esAppInstalada() || !esDispositivoTactil) {
+                html.classList.remove('app-viewport-corregido');
+                return;
+            }
+
+            const anchoLienzo = Math.max(window.innerWidth || 0, html.clientWidth || 0);
+            const anchoPantalla = Number(window.screen?.width) || 0;
+            const anchoDisponible = Number(window.screen?.availWidth) || anchoPantalla;
+            const dpr = Math.max(Number(window.devicePixelRatio) || 1, 1);
+            let anchoMovil = Math.min(
+                ...[anchoPantalla, anchoDisponible].filter(valor => valor > 0)
+            );
+
+            // Algunos navegadores en "Sitio de escritorio" informan píxeles físicos.
+            if (anchoMovil > 600) {
+                const anchoCorregido = anchoMovil / dpr;
+                anchoMovil = anchoCorregido >= 280 && anchoCorregido <= 600
+                    ? anchoCorregido
+                    : 390;
+            }
+
+            const usaLienzoDeEscritorio = anchoLienzo > 760
+                && anchoLienzo > anchoMovil * 1.35;
+
+            if (!usaLienzoDeEscritorio) {
+                html.classList.remove('app-viewport-corregido');
+                html.style.removeProperty('--app-mobile-width');
+                html.style.removeProperty('--app-mobile-height');
+                html.style.removeProperty('--app-mobile-scale');
+                return;
+            }
+
+            const escala = Math.min(Math.max(anchoLienzo / anchoMovil, 1), 4);
+            html.style.setProperty('--app-mobile-width', `${anchoMovil}px`);
+            html.style.setProperty('--app-mobile-height', `${Math.ceil(window.innerHeight / escala)}px`);
+            html.style.setProperty('--app-mobile-scale', escala.toFixed(4));
+            html.classList.add('app-viewport-corregido');
+        }
+
+        (function() {
+            if (esAppInstalada()) {
+                document.documentElement.classList.add('app-mobile-layout');
+                ajustarEscalaAppInstalada();
+            }
+
+            try {
+                const savedTheme = localStorage.getItem('theme') || 'dark';
+                if (savedTheme === 'light') {
+                    document.documentElement.classList.add('light-mode');
+                }
+            } catch (e) {
+                console.error("Error al cargar el tema:", e);
+            }
+        })();
+
+        function cambiarTema() {
+            const html = document.documentElement;
+            html.classList.toggle('light-mode');
+            const currentTheme = html.classList.contains('light-mode') ? 'light' : 'dark';
+            try {
+                localStorage.setItem('theme', currentTheme);
+            } catch (e) {
+                console.warn('No se pudo guardar la preferencia de tema:', e);
+            }
+            actualizarBotonTema();
+        }
+
+        function actualizarBotonTema() {
+            const boton = document.getElementById('theme-toggle');
+            if (!boton) return;
+
+            const modoClaro = document.documentElement.classList.contains('light-mode');
+            boton.querySelector('.theme-icon').textContent = modoClaro ? '☀️' : '🌙';
+            boton.querySelector('.theme-label').textContent = modoClaro ? 'Claro' : 'Oscuro';
+            boton.setAttribute('aria-label', modoClaro ? 'Cambiar a modo oscuro' : 'Cambiar a modo claro');
+            boton.setAttribute('title', modoClaro ? 'Cambiar a modo oscuro' : 'Cambiar a modo claro');
+        }
+
+        function actualizarEstadoConexion() {
+            const indicador = document.getElementById('connection-status');
+            const etiquetaMovil = indicador?.querySelector('.status-mobile');
+            if (!indicador || !etiquetaMovil) return;
+
+            const conectado = navigator.onLine;
+            etiquetaMovil.textContent = conectado ? 'Online' : 'Offline';
+            indicador.classList.toggle('is-offline', !conectado);
+            indicador.setAttribute('aria-label', conectado ? 'Estado: Online' : 'Estado: Offline');
+        }
+    </script>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="app-notifications.js"></script>
+    <script src="cache.js"></script>
+    <style>
+    :root {
+        --bg-color: #08111f;
+        --card-bg: #101d31;
+        --input-bg: #172740;
+        --border-color: rgba(96, 165, 250, 0.22);
+        --accent-blue: #60a5fa;
+        --accent-green: #10b981;
+        --accent-red: #ef4444;
+        --accent-amber: #f59e0b;
+        --text: #f8fbff;
+        --text-muted: #9fb0c7;
+        --cyan-title: #7dd3fc;
+        --nav-bg: #101d31;
+        --shadow-blue: 0 14px 36px rgba(15, 91, 189, 0.2), 0 3px 10px rgba(2, 8, 23, 0.24);
+        --shadow-hover: 0 18px 42px rgba(37, 99, 235, 0.28), 0 6px 14px rgba(2, 8, 23, 0.28);
+        --gold-soft: rgba(245, 158, 11, 0.12);
+    }
+
+    html.light-mode {
+        --bg-color: #f7faff;
+        --card-bg: #ffffff;
+        --input-bg: #f5f8fc;
+        --border-color: #d9e4f2;
+        --accent-blue: #3b82f6;
+        --accent-green: #059669;
+        --accent-red: #dc2626;
+        --accent-amber: #d97706;
+        --text: #0b1f3a;
+        --text-muted: #64748b;
+        --cyan-title: #3986df;
+        --nav-bg: #ffffff;
+        --shadow-blue: 0 14px 34px rgba(59, 130, 246, 0.12), 0 3px 10px rgba(30, 64, 175, 0.07);
+        --shadow-hover: 0 18px 42px rgba(59, 130, 246, 0.18), 0 6px 14px rgba(30, 64, 175, 0.1);
+        --gold-soft: rgba(245, 158, 11, 0.1);
+    }
+
+    * { 
+        box-sizing: border-box; 
+        margin: 0; 
+        padding: 0; 
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+
+    body { 
+        min-height: 100vh;
+        background:
+            radial-gradient(circle at 8% 5%, rgba(59, 130, 246, 0.12), transparent 28rem),
+            radial-gradient(circle at 92% 2%, rgba(245, 158, 11, 0.08), transparent 25rem),
+            var(--bg-color); 
+        color: var(--text); 
+        padding: 24px 18px 48px; 
+        display: flex; 
+        justify-content: center;
+        transition: background-color 0.3s, color 0.3s;
+    }
+
+    html.app-viewport-corregido {
+        overflow-x: hidden;
+    }
+
+    html.app-viewport-corregido body {
+        width: var(--app-mobile-width);
+        min-height: var(--app-mobile-height);
+    }
+
+    @supports (zoom: 1) {
+        html.app-viewport-corregido body {
+            zoom: var(--app-mobile-scale);
+        }
+    }
+
+    @supports not (zoom: 1) {
+        html.app-viewport-corregido body {
+            transform: scale(var(--app-mobile-scale));
+            transform-origin: top left;
+        }
+    }
+
+    .container { 
+        width: 100%; 
+        max-width: 520px; 
+        display: flex; 
+        flex-direction: column; 
+        gap: 20px; 
+        transition: max-width 0.3s ease;
+    } 
+    
+    .page-header { 
+        width: 100%;
+        max-width: 520px;
+        margin-inline: auto;
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 16px;
+        position: relative;
+        padding: 24px 28px;
+        background: var(--card-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 22px;
+        box-shadow: var(--shadow-blue);
+        transition: background-color 0.3s, border-color 0.3s, box-shadow 0.25s;
+    }
+
+    .brand-mark {
+        width: 54px;
+        height: 54px;
+        flex: 0 0 54px;
+        display: grid;
+        place-items: center;
+        border-radius: 17px;
+        font-size: 1.7rem;
+        background: linear-gradient(145deg, rgba(245, 158, 11, 0.2), rgba(59, 130, 246, 0.12));
+        border: 1px solid rgba(245, 158, 11, 0.24);
+    }
+
+    .header-copy { flex: 1; min-width: 0; }
+
+    .page-header h1 { 
+        font-size: clamp(1.65rem, 4vw, 2.25rem); 
+        font-weight: 900; 
+        color: var(--text);
+        letter-spacing: -0.035em;
+    }
+    .page-header p { 
+        color: var(--text-muted); 
+        font-size: 0.95rem; 
+        margin-top: 5px;
+    }
+
+    .live-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        flex: 0 0 auto;
+        padding: 9px 13px;
+        border-radius: 999px;
+        color: var(--accent-green);
+        background: rgba(16, 185, 129, 0.1);
+        border: 1px solid rgba(16, 185, 129, 0.24);
+        font-size: 0.78rem;
+        font-weight: 850;
+    }
+
+    .live-badge::before {
+        content: '';
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: currentColor;
+        box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.12);
+    }
+
+    .live-badge.is-offline {
+        color: #d97786;
+        background: rgba(217, 119, 134, 0.1);
+        border-color: rgba(217, 119, 134, 0.24);
+    }
+
+    .live-badge.is-offline::before {
+        box-shadow: 0 0 0 4px rgba(217, 119, 134, 0.12);
+    }
+
+    .status-mobile { display: none; }
+
+    .card { 
+        width: 100%;
+        max-width: 520px;
+        background: var(--card-bg); 
+        border-radius: 20px; 
+        padding: 22px; 
+        border: 1px solid var(--border-color); 
+        box-shadow: var(--shadow-blue);
+        min-width: 0;
+        transition: transform 0.22s ease, background-color 0.3s, border-color 0.3s, box-shadow 0.22s ease;
+    }
+
+    .card:hover {
+        transform: translateY(-3px);
+        box-shadow: var(--shadow-hover);
+    }
+
+    .awards-grid {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 20px;
+        align-items: start;
+    }
+
+    .featured-card {
+        grid-column: auto;
+        position: relative;
+        overflow: hidden;
+        background:
+            linear-gradient(105deg, var(--gold-soft), transparent 48%),
+            var(--card-bg);
+    }
+
+    .featured-card::after {
+        content: '🏆';
+        position: absolute;
+        right: 26px;
+        top: 50%;
+        transform: translateY(-50%) rotate(7deg);
+        font-size: 6.5rem;
+        opacity: 0.065;
+        pointer-events: none;
+    }
+
+    .annual-card,
+    .onfire-card {
+        position: relative;
+        overflow: hidden;
+        isolation: isolate;
+    }
+
+    .annual-card > *,
+    .onfire-card > * {
+        position: relative;
+        z-index: 1;
+    }
+
+    .annual-card {
+        border-color: rgba(245, 158, 11, 0.34);
+        background:
+            radial-gradient(circle at 100% 0%, rgba(245, 158, 11, 0.18), transparent 44%),
+            linear-gradient(145deg, rgba(245, 158, 11, 0.08), rgba(59, 130, 246, 0.055) 58%, transparent),
+            var(--card-bg);
+        box-shadow: 0 16px 38px rgba(180, 112, 10, 0.16), var(--shadow-blue);
+    }
+
+    .annual-card::after {
+        content: '🏅';
+        position: absolute;
+        z-index: 0;
+        right: -10px;
+        top: 32px;
+        font-size: 7.5rem;
+        opacity: 0.055;
+        transform: rotate(10deg);
+        pointer-events: none;
+    }
+
+    .annual-card .seccion-titulo {
+        color: var(--accent-amber);
+    }
+
+    .annual-card .annual-summary-item {
+        border-color: rgba(245, 158, 11, 0.24);
+        background: color-mix(in srgb, var(--input-bg) 88%, var(--accent-amber) 12%);
+    }
+
+    .annual-card .annual-summary-item strong,
+    .annual-card .tabla-stats th {
+        color: color-mix(in srgb, var(--text) 72%, var(--accent-amber) 28%);
+    }
+
+    .onfire-card {
+        border-color: rgba(249, 115, 22, 0.38);
+        background:
+            radial-gradient(circle at 100% 100%, rgba(239, 68, 68, 0.15), transparent 45%),
+            linear-gradient(145deg, rgba(249, 115, 22, 0.09), rgba(245, 158, 11, 0.045) 55%, transparent),
+            var(--card-bg);
+        box-shadow: 0 16px 38px rgba(194, 65, 12, 0.16), var(--shadow-blue);
+    }
+
+    .onfire-card::after {
+        content: '🔥';
+        position: absolute;
+        z-index: 0;
+        right: -22px;
+        bottom: -38px;
+        font-size: 12rem;
+        line-height: 1;
+        opacity: 0.055;
+        transform: rotate(8deg);
+        filter: saturate(1.15);
+        pointer-events: none;
+    }
+
+    .onfire-card .seccion-titulo {
+        color: #fb923c;
+    }
+
+    .onfire-card .seccion-titulo > .plain-icon {
+        width: 38px;
+        height: 38px;
+        flex: 0 0 38px;
+        display: grid;
+        place-items: center;
+        border-radius: 12px;
+        border: 1px solid rgba(249, 115, 22, 0.24);
+        background: rgba(249, 115, 22, 0.12);
+        font-size: 1.15rem;
+    }
+
+    .onfire-description {
+        color: color-mix(in srgb, var(--text-muted) 84%, #fb923c 16%) !important;
+    }
+
+    .onfire-player {
+        margin-bottom: 8px;
+        padding: 14px;
+        border: 1px solid rgba(249, 115, 22, 0.28);
+        border-radius: 14px;
+        background: color-mix(in srgb, var(--input-bg) 88%, #f97316 12%);
+        box-shadow: inset 3px 0 0 rgba(249, 115, 22, 0.72);
+    }
+
+    .onfire-period {
+        color: #fb923c;
+        font-size: 0.75rem;
+        font-weight: 850;
+        letter-spacing: 0.02em;
+        text-transform: uppercase;
+    }
+
+    .btn { 
+        min-height: 48px; 
+        padding: 11px 18px; 
+        border-radius: 14px; 
+        font-weight: 800; 
+        cursor: pointer; 
+        background: var(--nav-bg); 
+        color: var(--accent-blue); 
+        font-size: 0.95rem; 
+        display: flex; 
+        align-items: center; 
+        justify-content: center; 
+        gap: 8px;
+        text-decoration: none;
+        border: 1px solid var(--border-color);
+        box-shadow: var(--shadow-blue);
+        transition: transform 0.2s, background-color 0.2s, box-shadow 0.2s;
+    }
+
+    .btn:hover {
+        transform: translateY(-2px);
+        box-shadow: var(--shadow-hover);
+    }
+
+    .nav-actions {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 10px;
+    }
+
+    .lobby-button { min-width: 190px; }
+    .theme-button { min-width: 125px; }
+
+    html.app-mobile-layout body { padding: 18px 12px 36px; }
+    html.app-mobile-layout .container { gap: 16px; }
+    html.app-mobile-layout .awards-grid { grid-template-columns: 1fr; gap: 16px; }
+    html.app-mobile-layout .featured-card { grid-column: auto; }
+    html.app-mobile-layout .page-header { padding: 21px 18px; border-radius: 20px; }
+    html.app-mobile-layout .brand-mark { width: 48px; height: 48px; flex-basis: 48px; }
+    html.app-mobile-layout .live-badge {
+        display: inline-flex;
+        position: absolute;
+        top: 13px;
+        right: 14px;
+        margin: 0;
+        padding: 5px 9px;
+        font-size: 0.7rem;
+    }
+    html.app-mobile-layout .live-badge::before { width: 7px; height: 7px; }
+    html.app-mobile-layout .status-desktop { display: none; }
+    html.app-mobile-layout .status-mobile { display: inline; }
+    html.app-mobile-layout .card { padding: 18px; border-radius: 18px; }
+    html.app-mobile-layout .tabla-stats { font-size: 0.75rem; }
+    html.app-mobile-layout .tabla-stats th,
+    html.app-mobile-layout .tabla-stats td {
+        padding: 9px 5px;
+        line-height: 1.25;
+    }
+    html.app-mobile-layout .tabla-stats th {
+        font-size: 0.66rem;
+        letter-spacing: 0.01em;
+    }
+    html.app-mobile-layout .featured-card::after {
+        right: 10px;
+        top: 72%;
+        font-size: 4.3rem;
+        opacity: 0.055;
+    }
+    html.app-mobile-layout .annual-card::after { font-size: 6rem; }
+    html.app-mobile-layout .onfire-card::after {
+        right: -18px;
+        bottom: -24px;
+        font-size: 9rem;
+    }
+
+    .table-shell {
+        overflow: hidden;
+        margin-top: 10px;
+        border-radius: 0;
+        border: 0;
+        background: transparent;
+    }
+
+    .tabla-stats { 
+        width: 100%; 
+        border-collapse: collapse; 
+        text-align: left; 
+        font-size: 0.85rem; 
+        margin-top: 0; 
+        table-layout: fixed;
+    }
+    .tabla-stats th { 
+        padding: 10px 8px; 
+        color: var(--text-muted); 
+        border-bottom: 1px solid var(--border-color); 
+        font-weight: 600; 
+    }
+    .tabla-stats td { 
+        padding: 10px 8px; 
+        border-bottom: 1px solid var(--border-color); 
+        vertical-align: middle; 
+        overflow-wrap: anywhere;
+    }
+
+    .tabla-stats tbody tr:last-child td { border-bottom: 0; }
+
+    .seccion-titulo {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 1.1rem;
+        font-weight: 800;
+        margin-bottom: 4px;
+        color: var(--cyan-title);
+    }
+
+    .seccion-titulo > span {
+        width: 38px;
+        height: 38px;
+        flex: 0 0 38px;
+        display: grid;
+        place-items: center;
+        border-radius: 12px;
+        background: rgba(59, 130, 246, 0.1);
+        border: 1px solid rgba(59, 130, 246, 0.13);
+    }
+
+    .seccion-titulo > .plain-icon {
+        width: auto;
+        height: auto;
+        flex: 0 0 auto;
+        display: inline;
+        border: 0;
+        border-radius: 0;
+        background: transparent;
+        font-size: 1.05rem;
+    }
+
+    .monthly-award {
+        border: 1px solid rgba(245, 158, 11, 0.2);
+        border-radius: 12px;
+        padding: 14px;
+        background: color-mix(in srgb, var(--card-bg) 90%, var(--accent-amber) 10%);
+    }
+
+    .annual-summary {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 8px;
+        margin: 13px 0 14px;
+    }
+
+    .annual-summary-item {
+        min-width: 0;
+        padding: 10px 7px;
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        background: var(--input-bg);
+        text-align: center;
+    }
+
+    .annual-summary-item span,
+    .annual-record {
+        display: block;
+        color: var(--text-muted);
+        font-size: 0.66rem;
+        line-height: 1.25;
+    }
+
+    .annual-summary-item strong {
+        display: block;
+        margin-top: 3px;
+        color: var(--text);
+        font-size: 0.9rem;
+    }
+
+    .annual-player-name {
+        font-weight: 850;
+    }
+
+    .annual-record {
+        margin-top: 2px;
+    }
+
+    .seccion-titulo h3 {
+        font-size: 1.05rem;
+        line-height: 1.25;
+    }
+
+    .badge-oro { color: #eab308; font-weight: 900; }
+    .badge-plata { color: var(--text-muted); font-weight: 900; }
+    .badge-bronce { color: #d97706; font-weight: 900; }
+
+    @media (max-width: 760px) {
+        body { padding: 18px 12px 36px; }
+        .container { gap: 16px; }
+        .awards-grid { grid-template-columns: 1fr; gap: 16px; }
+        .featured-card { grid-column: auto; }
+        .page-header { padding: 21px 18px; border-radius: 20px; }
+        .brand-mark { width: 48px; height: 48px; flex-basis: 48px; }
+        .page-header { flex-wrap: wrap; }
+        .live-badge {
+            display: inline-flex;
+            position: absolute;
+            top: 13px;
+            right: 14px;
+            margin: 0;
+            padding: 5px 9px;
+            border: 1px solid rgba(16, 185, 129, 0.24);
+            border-radius: 999px;
+            background: rgba(16, 185, 129, 0.1);
+            font-size: 0.7rem;
+        }
+        .live-badge.is-offline {
+            background: rgba(217, 119, 134, 0.1);
+            border-color: rgba(217, 119, 134, 0.24);
+        }
+        .live-badge::before { width: 7px; height: 7px; }
+        .status-desktop { display: none; }
+        .status-mobile { display: inline; }
+        .card { padding: 18px; border-radius: 18px; }
+
+        .tabla-stats {
+            display: table;
+            table-layout: fixed;
+            font-size: 0.75rem;
+        }
+
+        .tabla-stats thead { display: table-header-group; }
+        .tabla-stats tbody { display: table-row-group; }
+        .tabla-stats tr { display: table-row; }
+
+        .tabla-stats th,
+        .tabla-stats td {
+            display: table-cell;
+            width: auto;
+            padding: 9px 5px;
+            line-height: 1.25;
+            overflow-wrap: anywhere;
+        }
+
+        .tabla-stats th {
+            font-size: 0.66rem;
+            letter-spacing: 0.01em;
+        }
+
+        .tabla-stats th:first-child,
+        .tabla-stats td:first-child {
+            width: 36px !important;
+        }
+
+        .tabla-stats td[colspan] {
+            display: table-cell;
+            width: auto !important;
+            text-align: center !important;
+        }
+
+        .featured-card::after {
+            display: block;
+            right: 10px;
+            top: 72%;
+            font-size: 4.3rem;
+            opacity: 0.055;
+        }
+    }
+
+    @media (max-width: 480px) {
+        .nav-actions { align-items: stretch; }
+        .lobby-button { min-width: 0; flex: 1; }
+        .theme-button { min-width: 112px; }
+        .page-header h1 { font-size: 1.52rem; }
+        .page-header p { font-size: 0.82rem; }
+    }
+
+    @media (max-width: 390px) {
+        .live-badge {
+            width: 22px;
+            height: 22px;
+            padding: 0;
+            justify-content: center;
+            gap: 0;
+        }
+
+        .live-badge::before {
+            width: 8px;
+            height: 8px;
+        }
+
+        .status-mobile { display: none; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        *, *::before, *::after {
+            scroll-behavior: auto !important;
+            transition-duration: 0.01ms !important;
+        }
+    }
+    </style>
+
+    <!-- Ajuste exclusivo para iPhone/iPad: respeta notch, Dynamic Island y barra inferior
+         sin cambiar el diseño de Android ni escritorio. -->
+    <script id="ios-safe-area-fix">
+        (function () {
+            const esIOS =
+                /iPhone|iPad|iPod/i.test(navigator.userAgent) ||
+                (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
+            if (!esIOS) return;
+
+            document.documentElement.classList.add('ios-safe-area');
+
+            function aplicarSafeAreaIOS() {
+                const body = document.body;
+                if (!body) return;
+
+                if (body.dataset.iosSafeAreaCapturada !== '1') {
+                    body.dataset.iosPaddingTop = body.style.paddingTop || '';
+                    body.dataset.iosPaddingRight = body.style.paddingRight || '';
+                    body.dataset.iosPaddingBottom = body.style.paddingBottom || '';
+                    body.dataset.iosPaddingLeft = body.style.paddingLeft || '';
+                    body.dataset.iosSafeAreaCapturada = '1';
+                }
+
+                body.style.paddingTop = body.dataset.iosPaddingTop;
+                body.style.paddingRight = body.dataset.iosPaddingRight;
+                body.style.paddingBottom = body.dataset.iosPaddingBottom;
+                body.style.paddingLeft = body.dataset.iosPaddingLeft;
+
+                const estilos = getComputedStyle(body);
+
+                body.style.paddingTop =
+                    `calc(${estilos.paddingTop} + env(safe-area-inset-top, 0px))`;
+                body.style.paddingRight =
+                    `calc(${estilos.paddingRight} + env(safe-area-inset-right, 0px))`;
+                body.style.paddingBottom =
+                    `calc(${estilos.paddingBottom} + env(safe-area-inset-bottom, 0px))`;
+                body.style.paddingLeft =
+                    `calc(${estilos.paddingLeft} + env(safe-area-inset-left, 0px))`;
+            }
+
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', aplicarSafeAreaIOS, { once: true });
+            } else {
+                aplicarSafeAreaIOS();
+            }
+
+            window.addEventListener('orientationchange', function () {
+                window.setTimeout(aplicarSafeAreaIOS, 180);
+            });
+        })();
+    </script>
+
+</head>
+<body>
+
+    <div class="container">
+        <!-- Barra de navegación y selector de tema -->
+        <div class="nav-actions">
+            <a href="lobby.html" class="btn lobby-button">← Volver al lobby</a>
+            <button type="button" id="theme-toggle" class="btn theme-button" onclick="cambiarTema()" title="Cambiar modo de color">
+                <span class="theme-icon" aria-hidden="true">🌙</span>
+                <span class="theme-label">Oscuro</span>
+            </button>
+        </div>
+
+        <header class="page-header">
+            <div class="brand-mark" aria-hidden="true">🏆</div>
+            <div class="header-copy">
+                <h1>Salón de Galardones</h1>
+                <p>Los mejores jugadores, parejas y momentos del club</p>
+            </div>
+            <div id="connection-status" class="live-badge" role="status" aria-live="polite">
+                <span class="status-desktop">Datos actualizados</span>
+                <span class="status-mobile">Online</span>
+            </div>
+        </header>
+
+        <main class="awards-grid">
+
+        <!-- 1. TOP ANUAL CON CLASIFICACIÓN SEMANAL -->
+        <section class="card annual-card" id="top-anual-section">
+            <div class="seccion-titulo">
+                <span class="plain-icon" aria-hidden="true">🏅</span>
+                <h3>Top Anual <span id="top-anual-year"></span></h3>
+            </div>
+            <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0;">
+                Ranking por eficiencia. La exigencia semanal avanza hasta alcanzar 360 partidas al cierre del año.
+            </p>
+            <div class="annual-summary" aria-label="Progreso de clasificación anual">
+                <div class="annual-summary-item">
+                    <span>Semana de control</span>
+                    <strong id="top-anual-semana">—</strong>
+                </div>
+                <div class="annual-summary-item">
+                    <span>Meta vigente</span>
+                    <strong id="top-anual-meta-semanal">—</strong>
+                </div>
+                <div class="annual-summary-item">
+                    <span>Meta final</span>
+                    <strong>360 partidas</strong>
+                </div>
+            </div>
+            <div class="table-shell">
+                <table class="tabla-stats">
+                    <thead>
+                        <tr>
+                            <th style="width: 40px; text-align: center;">#</th>
+                            <th>Jugador</th>
+                            <th style="text-align: center;">Partidas</th>
+                            <th style="text-align: center;">Efectividad</th>
+                        </tr>
+                    </thead>
+                    <tbody id="cuerpo-ranking-anual">
+                        <tr><td colspan="4" style="text-align: center; color: var(--text-muted); padding: 12px 0;">Calculando clasificación anual...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- 2. JUGADOR DEL MES -->
+        <section class="card featured-card">
+            <div class="seccion-titulo">
+                <span>🏆</span>
+                <h3>Jugador del Mes</h3>
+            </div>
+            <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 12px;">
+                Mejor eficiencia registrada por mes, con un requisito mínimo de 30 partidas jugadas.
+            </p>
+            <div id="lista-jugador-mes" style="display: flex; flex-direction: column; gap: 12px;">
+                <div style="text-align: center; color: var(--text-muted); padding: 12px 0;">Analizando meses anteriores...</div>
+            </div>
+        </section>
+
+        <!-- 3. JUGADORES ON FIRE -->
+        <section class="card onfire-card" id="onfire-section">
+            <div class="seccion-titulo">
+                <span class="plain-icon" aria-hidden="true">🔥</span>
+                <h3>Jugadores On Fire</h3>
+            </div>
+            <p class="onfire-description" style="font-size: 0.8rem; margin-bottom: 12px;">
+                Mínimo 8 partidas y 75%+ de eficiencia.
+            </p>
+            <div id="lista-jugador-semana" style="display: flex; flex-direction: column; gap: 12px;">
+                <div style="text-align: center; color: var(--text-muted); padding: 12px 0;">Cargando jugadores on fire...</div>
+            </div>
+        </section>
+
+        <!-- RANKING ELO GLOBAL -->
+        <section class="card">
+            <div class="seccion-titulo">
+                <span class="plain-icon" aria-hidden="true">📊</span>
+                <h3>Ranking Elo</h3>
+            </div>
+            <div style="margin-bottom: 12px;">
+                <p style="font-size: 0.8rem; color: var(--text-muted); margin: 0;">
+                    Puntuación de habilidad oficial y categoría según el nivel de Elo.
+                </p>
+            </div>
+            <div class="table-shell">
+                <table class="tabla-stats">
+                    <thead>
+                        <tr>
+                            <th style="width: 40px; text-align: center;">#</th>
+                            <th>Jugador</th>
+                            <th style="text-align: center;">Nivel</th>
+                            <th style="text-align: center;">Puntuación Elo</th>
+                        </tr>
+                    </thead>
+                    <tbody id="cuerpo-ranking-elo">
+                        <tr><td colspan="4" style="text-align: center; color: var(--text-muted); padding: 12px 0;">Cargando ranking Elo oficial...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- TOP 10 MEJORES PAREJAS -->
+        <section class="card">
+            <div class="seccion-titulo">
+                <span class="plain-icon" aria-hidden="true">🤝</span>
+                <h3>Top 10: Mejores Parejas</h3>
+            </div>
+            <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 12px;">
+                Parejas con mejor rendimiento de efectividad en partidas (mín. 5 partidas).
+            </p>
+            <div class="table-shell">
+                <table class="tabla-stats">
+                    <thead>
+                        <tr>
+                            <th style="width: 40px; text-align: center;">#</th>
+                            <th>Pareja</th>
+                            <th style="text-align: center;">Efectividad</th>
+                            <th style="text-align: center;">Récord</th>
+                        </tr>
+                    </thead>
+                    <tbody id="cuerpo-ranking-parejas">
+                        <tr><td colspan="4" style="text-align: center; color: var(--text-muted); padding: 12px 0;">Calculando mejores parejas...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- TOP 3 RACHAS DE VICTORIAS -->
+        <section class="card">
+            <div class="seccion-titulo">
+                <span class="plain-icon" aria-hidden="true">⚡</span>
+                <h3>Top 3 Rachas de Victorias</h3>
+            </div>
+            <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 12px;">
+                Mayores rachas de partidas consecutivas ganadas registradas.
+            </p>
+            <div class="table-shell">
+                <table class="tabla-stats">
+                    <thead>
+                        <tr>
+                            <th style="width: 40px; text-align: center;">#</th>
+                            <th>Jugador</th>
+                            <th style="text-align: center;">Racha Actual</th>
+                            <th style="text-align: center;">Racha Máxima</th>
+                        </tr>
+                    </thead>
+                    <tbody id="cuerpo-ranking-rachas">
+                        <tr><td colspan="4" style="text-align: center; color: var(--text-muted); padding: 12px 0;">Calculando rachas...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- PROMEDIO DE DIFERENCIAL DE PUNTOS -->
+        <section class="card">
+            <div class="seccion-titulo">
+                <span class="plain-icon" aria-hidden="true">📈</span>
+                <h3>Promedio de Diferencial de Puntos</h3>
+            </div>
+            <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 12px;">
+                Promedio de puntos de ventaja obtenidos por partida ganada, midiendo la contundencia de dominio.
+            </p>
+            <div class="table-shell">
+                <table class="tabla-stats">
+                    <thead>
+                        <tr>
+                            <th style="width: 40px; text-align: center;">#</th>
+                            <th>Jugador</th>
+                            <th style="text-align: center;">Dif. Promedio</th>
+                        </tr>
+                    </thead>
+                    <tbody id="cuerpo-ranking-diferencial">
+                        <tr><td colspan="3" style="text-align: center; color: var(--text-muted); padding: 12px 0;">Calculando diferencial de puntos...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- RENDIMIENTO CLUTCH -->
+        <section class="card">
+            <div class="seccion-titulo">
+                <span class="plain-icon" aria-hidden="true">🎯</span>
+                <h3>Jugador Clutch (Remontadas Épicas)</h3>
+            </div>
+            <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 12px;">
+                Jugadores que ganaron la partida después de que sus contrincantes estuvieran a falta de 20 puntos o menos para ganar y con una diferencia en contra de 100 puntos o más.
+            </p>
+            <div class="table-shell">
+                <table class="tabla-stats">
+                    <thead>
+                        <tr>
+                            <th style="width: 40px; text-align: center;">#</th>
+                            <th>Jugador</th>
+                            <th style="text-align: right;">Remontadas Épicas</th>
+                        </tr>
+                    </thead>
+                    <tbody id="cuerpo-ranking-clutch">
+                        <tr><td colspan="3" style="text-align: center; color: var(--text-muted); padding: 12px 0;">No hay registros de remontadas épicas.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+        </main>
+    </div>
+
+<script>
+    const SUPABASE_URL = 'https://kzbslfwupzwczmjqfjem.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt6YnNsZnd1cHp3Y3ptanFmamVtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODcxNDI1MzksImV4cCI6MjEwMjcxODUzOX0.qeeh2FV3zKRet-jRMVvJUwBm9jYHsLbWSYWIao574qc';
+
+    const db =
+        window.supabaseClient ||
+        window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    if (!window.supabaseClient && db) {
+        window.supabaseClient = db;
+    }
+
+    const GALARDONES_CACHE_KEY = 'domino_cache_galardones_v6';
+    let temporizadorActualizacionGalardones = null;
+    let firmaGalardonesRenderizada = '';
+
+    function firmaDatosGalardones(valor) {
+        const normalizar = dato => {
+            if (Array.isArray(dato)) {
+                return dato.map(normalizar).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
+            }
+            if (dato && typeof dato === 'object') {
+                return Object.keys(dato).sort().reduce((salida, clave) => {
+                    salida[clave] = normalizar(dato[clave]);
+                    return salida;
+                }, {});
+            }
+            return dato;
+        };
+        return JSON.stringify(normalizar(valor));
+    }
+
+    window.addEventListener('DOMContentLoaded', async () => {
+        ajustarEscalaAppInstalada();
+        let temporizadorEscala;
+        const reajustarEscala = () => {
+            window.clearTimeout(temporizadorEscala);
+            temporizadorEscala = window.setTimeout(ajustarEscalaAppInstalada, 120);
+        };
+        window.addEventListener('resize', reajustarEscala);
+        window.addEventListener('orientationchange', reajustarEscala);
+
+        actualizarBotonTema();
+        actualizarEstadoConexion();
+        window.addEventListener('online', actualizarEstadoConexion);
+        window.addEventListener('offline', actualizarEstadoConexion);
+
+        // 1. Mostrar inmediatamente la última versión guardada en caché.
+        cargarGalardonesDesdeCache();
+
+        if (navigator.onLine === false) return;
+
+        // 2. Traer datos frescos. El Elo se recalcula al cerrar cada partida.
+        await cargarDatosYProcesar();
+
+        db.channel('galardones_realtime')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'manos' }, () => {
+                console.log('Cambio detectado en manos, actualizando Galardones...');
+                programarActualizacionGalardones();
+            })
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'perfiles' }, () => {
+                console.log('Cambio detectado en perfiles, actualizando vista...');
+                programarActualizacionGalardones();
+            })
+            .subscribe();
+    });
+
+    function programarActualizacionGalardones() {
+        window.clearTimeout(temporizadorActualizacionGalardones);
+        temporizadorActualizacionGalardones = window.setTimeout(async () => {
+            temporizadorActualizacionGalardones = null;
+            await cargarDatosYProcesar();
+        }, 400);
+    }
+
+    async function obtenerDatosGalardones() {
+        const { data: perfiles, error: errorPerfiles } = await db
+            .from('perfiles')
+            .select('*');
+
+        if (errorPerfiles) throw errorPerfiles;
+
+        const { data: manos, error: errorManos } = await db
+            .from('manos')
+            .select('*, mesas(*)')
+            .eq('anulada', false)
+            .order('created_at', { ascending: true });
+
+        if (errorManos) throw errorManos;
+
+        const parejasRes = await db.from('v_top_10_parejas').select('*');
+
+        return {
+            perfiles: perfiles || [],
+            manos: manos || [],
+            // Estas vistas son complementarias; si alguna no está disponible,
+            // el resto de Galardones sigue funcionando.
+            // El diferencial se calcula localmente desde las mismas partidas
+            // terminadas usadas por el resto de Galardones.
+            diferencialView: null,
+            topParejasView: parejasRes.error ? null : parejasRes.data,
+            topRachasView: null,
+            jugadorSemanaView: null
+        };
+    }
+
+    function renderizarDatosGalardones(datos) {
+        if (!datos) return;
+
+        procesarYRenderizarGalardones(
+            datos.perfiles || [],
+            datos.manos || [],
+            datos.diferencialView || null,
+            datos.topParejasView || null,
+            datos.topRachasView || null,
+            datos.jugadorSemanaView || null
+        );
+    }
+
+    function cargarGalardonesDesdeCache() {
+        try {
+            const guardado = localStorage.getItem(GALARDONES_CACHE_KEY);
+            if (!guardado) return false;
+
+            const cache = JSON.parse(guardado);
+            if (!cache || !cache.datos) return false;
+
+            renderizarDatosGalardones(cache.datos);
+            firmaGalardonesRenderizada = firmaDatosGalardones(cache.datos);
+            return true;
+        } catch (error) {
+            console.warn('GALARDONES | No se pudo cargar la caché:', error);
+            return false;
+        }
+    }
+
+    function guardarGalardonesEnCache(datos) {
+        try {
+            localStorage.setItem(
+                GALARDONES_CACHE_KEY,
+                JSON.stringify({
+                    version: 1,
+                    actualizado: Date.now(),
+                    datos
+                })
+            );
+        } catch (error) {
+            console.warn('GALARDONES | No se pudo guardar la caché:', error);
+        }
+    }
+
+    async function cargarDatosYProcesar() {
+        try {
+            const datos = await obtenerDatosGalardones();
+            const firmaNueva = firmaDatosGalardones(datos);
+
+            // Evitamos reconstruir todos los rankings cuando Supabase devuelve
+            // exactamente la misma información que ya está visible.
+            if (firmaNueva !== firmaGalardonesRenderizada) {
+                renderizarDatosGalardones(datos);
+                firmaGalardonesRenderizada = firmaNueva;
+                guardarGalardonesEnCache(datos);
+            }
+        } catch (error) {
+            console.error('Error al cargar los datos de Galardones:', {
+                message: error?.message || String(error),
+                code: error?.code || null,
+                details: error?.details || null,
+                hint: error?.hint || null
+            });
+        }
+    }
+
+    function obtenerNivelPorElo(elo) {
+        if (elo < 1000) return 'Novato';
+        if (elo <= 1199) return 'Aficionado';
+        if (elo <= 1399) return 'Intermedio';
+        if (elo <= 1599) return 'Avanzado';
+        if (elo <= 1799) return 'Experto';
+        return 'Maestro';
+    }
+
+    function obtenerColorPorNivel(nivel) {
+        switch (nivel) {
+            case 'Novato': return '#d97786';
+            case 'Aficionado': return '#d99168';
+            case 'Intermedio': return '#c5a24f';
+            case 'Avanzado': return '#82a968';
+            case 'Experto': return '#54a58e';
+            case 'Maestro': return '#708fc2';
+            default: return 'var(--text)';
+        }
+    }
+
+    function obtenerFechaMano(mano) {
+        const valorFecha = mano?.created_at || mano?.creado_en || mano?.fecha_hora;
+        if (!valorFecha) return null;
+
+        const fecha = new Date(valorFecha);
+        return Number.isNaN(fecha.getTime()) ? null : fecha;
+    }
+
+    function calcularTopAnual(partidas, jugadoresIds, perfilesMap, referencia = new Date()) {
+        const META_ANUAL = 360;
+        const SEMANAS_CONTROL = 52;
+        const fechaReferencia = new Date(referencia);
+        const anio = fechaReferencia.getFullYear();
+        const diaDelAnio = Math.floor(
+            (Date.UTC(anio, fechaReferencia.getMonth(), fechaReferencia.getDate()) - Date.UTC(anio, 0, 1)) / 86400000
+        ) + 1;
+        const semanaControl = Math.min(SEMANAS_CONTROL, Math.max(1, Math.floor((diaDelAnio - 1) / 7) + 1));
+        const metaHastaSemana = Math.ceil((META_ANUAL * semanaControl) / SEMANAS_CONTROL);
+        const estadisticas = {};
+
+        partidas.forEach(partida => {
+            if (!partida.fecha_hora || (partida.ganador !== 1 && partida.ganador !== 2)) return;
+
+            const fechaPartida = new Date(partida.fecha_hora);
+            if (Number.isNaN(fechaPartida.getTime()) || fechaPartida.getFullYear() !== anio) return;
+
+            const registrar = (id, gano) => {
+                if (!jugadoresIds.has(id)) return;
+                if (!estadisticas[id]) estadisticas[id] = { partidas: 0, ganadas: 0, perdidas: 0 };
+                estadisticas[id].partidas++;
+                if (gano) estadisticas[id].ganadas++;
+                else estadisticas[id].perdidas++;
+            };
+
+            partida.eq1.forEach(id => registrar(id, partida.ganador === 1));
+            partida.eq2.forEach(id => registrar(id, partida.ganador === 2));
+        });
+
+        const clasificados = Object.entries(estadisticas)
+            .map(([id, datos]) => ({
+                id,
+                jugador: perfilesMap[id] || 'Jugador',
+                ...datos,
+                eficiencia: datos.partidas > 0 ? (datos.ganadas / datos.partidas) * 100 : 0
+            }))
+            .filter(item => item.partidas >= metaHastaSemana)
+            .sort((a, b) =>
+                b.eficiencia - a.eficiencia ||
+                b.ganadas - a.ganadas ||
+                b.partidas - a.partidas ||
+                String(a.jugador).localeCompare(String(b.jugador), 'es', { sensitivity: 'base' })
+            );
+
+        return { anio, semanaControl, metaHastaSemana, metaAnual: META_ANUAL, clasificados };
+    }
+
+    function obtenerVentanaOnFire(referencia = new Date()) {
+        const ahora = new Date(referencia);
+        const inicio = new Date(ahora);
+        const diasDesdeJueves = (ahora.getDay() - 4 + 7) % 7;
+
+        inicio.setDate(ahora.getDate() - diasDesdeJueves);
+        inicio.setHours(8, 0, 0, 0);
+
+        if (ahora < inicio) {
+            inicio.setDate(inicio.getDate() - 7);
+        }
+
+        const fin = new Date(inicio);
+        fin.setDate(fin.getDate() + 1);
+        fin.setHours(6, 0, 0, 0);
+
+        return { inicio, fin };
+    }
+
+    function calcularPromedioDiferencial(partidas, jugadoresIds, perfilesMap) {
+        const acumulado = {};
+
+        partidas.forEach(partida => {
+            if (partida.ganador !== 1 && partida.ganador !== 2) return;
+
+            const total1 = Number(partida.total1) || 0;
+            const total2 = Number(partida.total2) || 0;
+            const diferencial = Math.abs(total1 - total2);
+            const ganadores = partida.ganador === 1 ? partida.eq1 : partida.eq2;
+
+            ganadores.forEach(id => {
+                if (!jugadoresIds.has(id)) return;
+                if (!acumulado[id]) acumulado[id] = { suma: 0, victorias: 0 };
+                acumulado[id].suma += diferencial;
+                acumulado[id].victorias++;
+            });
+        });
+
+        return Object.entries(acumulado)
+            .map(([id, datos]) => ({
+                id,
+                nombre: perfilesMap[id] || 'Jugador',
+                promedio: datos.suma / datos.victorias,
+                victorias: datos.victorias
+            }))
+            .sort((a, b) =>
+                b.promedio - a.promedio ||
+                b.victorias - a.victorias ||
+                String(a.nombre).localeCompare(String(b.nombre), 'es', { sensitivity: 'base' })
+            );
+    }
+
+    function procesarYRenderizarGalardones(perfiles, manos, diferencialView, topParejasView, topRachasView, jugadorSemanaView) {
+        const jugadoresIds = new Set(
+            perfiles
+                .filter(p => 
+                    p.es_jugador === true || 
+                    p.es_jugador === 1 || 
+                    p.rol === 'jugador' || 
+                    p.rol === 'admin' || 
+                    p.rol === 'super_admin'
+                )
+                .map(p => p.id)
+        );
+
+        let perfilesMap = {};
+        perfiles.forEach(p => {
+            perfilesMap[p.id] = p.username || p.nombre_completo || 'Jugador';
+        });
+
+        let mesasMap = {};
+        manos.forEach(m => {
+            if (!m.mesa_id || !m.mesas) return;
+            if (!mesasMap[m.mesa_id]) {
+                mesasMap[m.mesa_id] = { mesa: m.mesas, manos: [] };
+            }
+            mesasMap[m.mesa_id].manos.push(m);
+        });
+
+        let partidas = [];
+        Object.values(mesasMap).forEach(item => {
+            let mesa = item.mesa;
+            let listaManos = item.manos.sort((a, b) => {
+                const fechaA = obtenerFechaMano(a);
+                const fechaB = obtenerFechaMano(b);
+                return (fechaA?.getTime() || 0) - (fechaB?.getTime() || 0);
+            });
+            
+            let p1 = mesa.jugador1_id, p2 = mesa.jugador2_id, p3 = mesa.jugador3_id, p4 = mesa.jugador4_id;
+            let eq1 = [p1, p3].filter(id => id != null && jugadoresIds.has(id));
+            let eq2 = [p2, p4].filter(id => id != null && jugadoresIds.has(id));
+            if (eq1.length !== 2 || eq2.length !== 2) return;
+            const limitePuntos = Number(mesa.limite_puntos || 200);
+
+            let subManos = [];
+            let subTotal1 = 0;
+            let subTotal2 = 0;
+            let team1HasBeenClutchThreatened = false;
+            let team2HasBeenClutchThreatened = false;
+
+            listaManos.forEach(m => {
+                subManos.push(m);
+                subTotal1 += (m.puntos_pareja1 || 0);
+                subTotal2 += (m.puntos_pareja2 || 0);
+
+                if (subTotal2 >= 180 && (subTotal2 - subTotal1) >= 100) {
+                    team1HasBeenClutchThreatened = true;
+                }
+                if (subTotal1 >= 180 && (subTotal1 - subTotal2) >= 100) {
+                    team2HasBeenClutchThreatened = true;
+                }
+
+                if (subTotal1 >= limitePuntos || subTotal2 >= limitePuntos) {
+                    let ganador = subTotal1 > subTotal2 ? 1 : (subTotal2 > subTotal1 ? 2 : 0);
+                    if (ganador === 0) {
+                        ganador = m.ganador_pareja || 0;
+                    }
+
+                    let clutchWinnerTeam = 0;
+                    if (ganador === 1 && team1HasBeenClutchThreatened) {
+                        clutchWinnerTeam = 1;
+                    } else if (ganador === 2 && team2HasBeenClutchThreatened) {
+                        clutchWinnerTeam = 2;
+                    }
+
+                    partidas.push({
+                        mesa_id: item.mesa_id + '_' + partidas.length,
+                        eq1,
+                        eq2,
+                        total1: subTotal1,
+                        total2: subTotal2,
+                        ganador,
+                        diff: Math.abs(subTotal1 - subTotal2),
+                        fecha_hora: obtenerFechaMano(m)?.toISOString() || null,
+                        listaManos: [...subManos],
+                        clutchWinnerTeam
+                    });
+
+                    subManos = [];
+                    subTotal1 = 0;
+                    subTotal2 = 0;
+                    team1HasBeenClutchThreatened = false;
+                    team2HasBeenClutchThreatened = false;
+                }
+            });
+        });
+
+        partidas.sort((a, b) => new Date(a.fecha_hora) - new Date(b.fecha_hora));
+
+        const topAnual = calcularTopAnual(partidas, jugadoresIds, perfilesMap);
+        const tbodyAnual = document.getElementById('cuerpo-ranking-anual');
+        document.getElementById('top-anual-year').textContent = topAnual.anio;
+        document.getElementById('top-anual-semana').textContent = `${topAnual.semanaControl} de 52`;
+        document.getElementById('top-anual-meta-semanal').textContent = `${topAnual.metaHastaSemana} partidas`;
+
+        if (topAnual.clasificados.length === 0) {
+            tbodyAnual.innerHTML = `<tr><td colspan="4" style="text-align: center; color: var(--text-muted); padding: 12px 0;">Aún ningún jugador alcanza las ${topAnual.metaHastaSemana} partidas requeridas en la semana ${topAnual.semanaControl}.</td></tr>`;
+        } else {
+            tbodyAnual.innerHTML = topAnual.clasificados.slice(0, 10).map((item, idx) => {
+                const badgeClass = idx === 0 ? 'badge-oro' : idx === 1 ? 'badge-plata' : idx === 2 ? 'badge-bronce' : '';
+                return `
+                    <tr>
+                        <td style="text-align: center;" class="${badgeClass}">${idx + 1}°</td>
+                        <td>
+                            <span class="annual-player-name">${item.jugador}</span>
+                            <span class="annual-record">${item.ganadas}V · ${item.perdidas}D</span>
+                        </td>
+                        <td style="text-align: center; font-weight: 850; color: var(--accent-blue);">${item.partidas} / ${topAnual.metaAnual}</td>
+                        <td style="text-align: center; font-weight: 900; color: var(--accent-green);">${item.eficiencia.toFixed(1)}%</td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        let tbodyElo = document.getElementById('cuerpo-ranking-elo');
+        let arrayElo = perfiles
+            .filter(p => jugadoresIds.has(p.id))
+            .map(p => {
+                let nombre = perfilesMap[p.id];
+                let eloOficial = (p.elo !== undefined && p.elo !== null) ? Number(p.elo) : 1200;
+                let nivel = obtenerNivelPorElo(eloOficial);
+                return { nombre, elo: eloOficial, nivel };
+            }).sort((a, b) => b.elo - a.elo);
+
+        if (arrayElo.length === 0) {
+            tbodyElo.innerHTML = `<tr><td colspan="4" style="text-align: center; color: var(--text-muted); padding: 12px 0;">No hay suficientes jugadores registrados en el Elo.</td></tr>`;
+        } else {
+            tbodyElo.innerHTML = '';
+            arrayElo.forEach((item, idx) => {
+                let badgeClass = idx === 0 ? 'badge-oro' : idx === 1 ? 'badge-plata' : idx === 2 ? 'badge-bronce' : '';
+                let colorNivel = obtenerColorPorNivel(item.nivel);
+                tbodyElo.innerHTML += `
+                    <tr>
+                        <td style="text-align: center;" class="${badgeClass}">${idx + 1}°</td>
+                        <td style="font-weight: bold;">${item.nombre}</td>
+                        <td style="text-align: center; font-weight: 800; color: ${colorNivel};">${item.nivel}</td>
+                        <td style="text-align: center; font-weight: 900; color: var(--accent-blue);">${item.elo} pts</td>
+                    </tr>
+                `;
+            });
+        }
+
+        let tbodyParejas = document.getElementById('cuerpo-ranking-parejas');
+        let parejasCalculadas = [];
+
+        if (topParejasView && Array.isArray(topParejasView) && topParejasView.length > 0) {
+            parejasCalculadas = topParejasView.map(item => ({
+                nombre_pareja: `${item.jugador_1} & ${item.jugador_2}`,
+                win_rate: Number(item.win_rate) || 0,
+                partidas_ganadas: item.partidas_ganadas,
+                partidas_jugadas: item.partidas_jugadas
+            }));
+        } else {
+            let parejasMap = {};
+            partidas.forEach(p => {
+                [p.eq1, p.eq2].forEach((eq, idxTeam) => {
+                    let key = eq.sort().join('_');
+                    if (!parejasMap[key]) {
+                        parejasMap[key] = { ids: eq, jugadas: 0, ganadas: 0 };
+                    }
+                    parejasMap[key].jugadas++;
+                    let gEq = p.ganador === 1 ? p.eq1 : (p.ganador === 2 ? p.eq2 : null);
+                    if (gEq && gEq.sort().join('_') === key) {
+                        parejasMap[key].ganadas++;
+                    }
+                });
+            });
+
+            parejasCalculadas = Object.values(parejasMap)
+                .filter(item => item.jugadas >= 5)
+                .map(item => ({
+                    nombre_pareja: `${perfilesMap[item.ids[0]] || 'Jugador'} & ${perfilesMap[item.ids[1]] || 'Jugador'}`,
+                    win_rate: (item.ganadas / item.jugadas) * 100,
+                    partidas_ganadas: item.ganadas,
+                    partidas_jugadas: item.jugadas
+                }))
+                .sort((a, b) => b.win_rate - a.win_rate || b.partidas_jugadas - a.partidas_jugadas)
+                .slice(0, 10);
+        }
+
+        if (parejasCalculadas.length > 0) {
+            tbodyParejas.innerHTML = '';
+            parejasCalculadas.forEach((item, idx) => {
+                let badgeClass = idx === 0 ? 'badge-oro' : idx === 1 ? 'badge-plata' : idx === 2 ? 'badge-bronce' : '';
+                tbodyParejas.innerHTML += `
+                    <tr>
+                        <td style="text-align: center;" class="${badgeClass}">${idx + 1}°</td>
+                        <td style="font-weight: bold; font-size: 0.82rem;">${item.nombre_pareja}</td>
+                        <td style="text-align: center; font-weight: 900; color: var(--accent-green);">${item.win_rate.toFixed(1)}%</td>
+                        <td style="text-align: center; color: var(--text-muted); font-size: 0.8rem;">${item.partidas_ganadas}V - ${item.partidas_jugadas - item.partidas_ganadas}D (${item.partidas_jugadas})</td>
+                    </tr>
+                `;
+            });
+        } else {
+            tbodyParejas.innerHTML = `<tr><td colspan="4" style="text-align: center; color: var(--text-muted); padding: 12px 0;">No hay suficientes parejas registradas (mín. 5 partidas).</td></tr>`;
+        }
+
+        let tbodyRachas = document.getElementById('cuerpo-ranking-rachas');
+        let rachasCalculadas = [];
+
+        if (topRachasView && Array.isArray(topRachasView) && topRachasView.length > 0) {
+            rachasCalculadas = topRachasView;
+        } else {
+            let playerStreaks = {};
+            jugadoresIds.forEach(id => {
+                playerStreaks[id] = { actual: 0, max: 0 };
+            });
+
+            partidas.forEach(p => {
+                let ganador = p.ganador;
+                let eqG = ganador === 1 ? p.eq1 : (ganador === 2 ? p.eq2 : []);
+                let eqP = ganador === 1 ? p.eq2 : (ganador === 2 ? p.eq1 : []);
+
+                eqG.forEach(id => {
+                    if (!playerStreaks[id]) playerStreaks[id] = { actual: 0, max: 0 };
+                    playerStreaks[id].actual++;
+                    if (playerStreaks[id].actual > playerStreaks[id].max) {
+                        playerStreaks[id].max = playerStreaks[id].actual;
+                    }
+                });
+
+                eqP.forEach(id => {
+                    if (!playerStreaks[id]) playerStreaks[id] = { actual: 0, max: 0 };
+                    playerStreaks[id].actual = 0;
+                });
+            });
+
+            rachasCalculadas = Object.keys(playerStreaks)
+                .map(id => ({
+                    jugador: perfilesMap[id] || 'Jugador',
+                    racha_actual: playerStreaks[id].actual,
+                    racha_maxima: playerStreaks[id].max
+                }))
+                .filter(item => item.racha_maxima > 0)
+                .sort((a, b) => b.racha_maxima - a.racha_maxima || b.racha_actual - a.racha_actual)
+                .slice(0, 3);
+        }
+
+        if (rachasCalculadas.length > 0) {
+            tbodyRachas.innerHTML = '';
+            rachasCalculadas.forEach((item, idx) => {
+                let badgeClass = idx === 0 ? 'badge-oro' : idx === 1 ? 'badge-plata' : idx === 2 ? 'badge-bronce' : '';
+                tbodyRachas.innerHTML += `
+                    <tr>
+                        <td style="text-align: center;" class="${badgeClass}">${idx + 1}°</td>
+                        <td style="font-weight: bold;">${item.jugador}</td>
+                        <td style="text-align: center; font-weight: 900; color: var(--accent-blue);">${item.racha_actual}</td>
+                        <td style="text-align: center; font-weight: 900; color: var(--accent-amber);">${item.racha_maxima}</td>
+                    </tr>
+                `;
+            });
+        } else {
+            tbodyRachas.innerHTML = `<tr><td colspan="4" style="text-align: center; color: var(--text-muted); padding: 12px 0;">No hay registros de rachas.</td></tr>`;
+        }
+
+        let contenedorSemana = document.getElementById('lista-jugador-semana');
+        let candidatosOnFire = [];
+        const ventanaOnFire = obtenerVentanaOnFire();
+        let periodoOnFire = `Jueves ${ventanaOnFire.inicio.getDate()}/${ventanaOnFire.inicio.getMonth() + 1}`;
+
+        if (jugadorSemanaView && Array.isArray(jugadorSemanaView) && jugadorSemanaView.length > 0) {
+            candidatosOnFire = jugadorSemanaView.map(item => ({
+                id: item.jugador_id || item.id,
+                jugador: item.jugador || perfilesMap[item.jugador_id || item.id] || 'Jugador',
+                eficiencia: Number(item.eficiencia) || 0,
+                jugadas: item.jugadas || item.partidas_jugadas || 0,
+                ganadas: item.ganadas || item.partidas_ganadas || 0
+            }));
+        } else {
+            const { inicio: inicioVentana, fin: finVentana } = ventanaOnFire;
+
+            let statsVentana = {};
+            partidas.forEach(p => {
+                if (!p.fecha_hora) return;
+                let fMesa = new Date(p.fecha_hora);
+                if (fMesa >= inicioVentana && fMesa < finVentana) {
+                    let ganador = p.ganador;
+                    p.eq1.forEach(id => {
+                        if (!statsVentana[id]) statsVentana[id] = { jugadas: 0, ganadas: 0 };
+                        statsVentana[id].jugadas++;
+                        if (ganador === 1) statsVentana[id].ganadas++;
+                    });
+                    p.eq2.forEach(id => {
+                        if (!statsVentana[id]) statsVentana[id] = { jugadas: 0, ganadas: 0 };
+                        statsVentana[id].jugadas++;
+                        if (ganador === 2) statsVentana[id].ganadas++;
+                    });
+                }
+            });
+
+            candidatosOnFire = Object.keys(statsVentana)
+                .map(id => {
+                    let st = statsVentana[id];
+                    let eficiencia = (st.ganadas / st.jugadas) * 100;
+                    return { 
+                        id, 
+                        jugador: perfilesMap[id] || 'Jugador',
+                        ...st, 
+                        eficiencia 
+                    };
+                })
+                .filter(item => item.jugadas >= 8 && item.eficiencia >= 75)
+                .sort((a, b) => b.eficiencia - a.eficiencia || b.ganadas - a.ganadas);
+        }
+
+        if (candidatosOnFire.length > 0) {
+            let htmlOnFire = '';
+            candidatosOnFire.forEach((item, idx) => {
+                let insignia = idx === 0 ? '👑 ' : '🔥 ';
+                htmlOnFire += `
+                    <div class="onfire-player">
+                        <div class="onfire-period">🔥 Periodo: ${periodoOnFire}</div>
+                        <div style="font-size: 1.15rem; font-weight: 900; color: var(--text); margin-top: 4px;">${insignia}${item.jugador}</div>
+                        <div style="display: flex; justify-content: space-between; font-size: 0.85rem; color: var(--text-muted); margin-top: 6px;">
+                            <span>Eficiencia: <strong style="color: var(--accent-green);">${Number(item.eficiencia).toFixed(1)}%</strong></span>
+                            <span>Récord: ${item.ganadas}V / ${item.jugadas - item.ganadas}D (${item.jugadas} jugadas)</span>
+                        </div>
+                    </div>
+                `;
+            });
+            contenedorSemana.innerHTML = htmlOnFire;
+        } else {
+            contenedorSemana.innerHTML = `<div style="text-align: center; color: var(--text-muted); padding: 12px 0;">Ningún jugador alcanzó el mínimo de 8 partidas con 75%+ de eficiencia en esta ventana.</div>`;
+        }
+
+        let tbodyDiff = document.getElementById('cuerpo-ranking-diferencial');
+        const arrayDiff = calcularPromedioDiferencial(partidas, jugadoresIds, perfilesMap);
+
+        if (arrayDiff.length === 0) {
+            tbodyDiff.innerHTML = `<tr><td colspan="3" style="text-align: center; color: var(--text-muted); padding: 12px 0;">No hay suficientes datos de partidas ganadas.</td></tr>`;
+        } else {
+            tbodyDiff.innerHTML = '';
+            arrayDiff.forEach((item, idx) => {
+                let badgeClass = idx === 0 ? 'badge-oro' : idx === 1 ? 'badge-plata' : idx === 2 ? 'badge-bronce' : '';
+                tbodyDiff.innerHTML += `
+                    <tr>
+                        <td style="text-align: center;" class="${badgeClass}">${idx + 1}°</td>
+                        <td style="font-weight: bold;">${item.nombre}</td>
+                        <td style="text-align: center; font-weight: 900; color: var(--cyan-title);">+${item.promedio.toFixed(1)} pts</td>
+                    </tr>
+                `;
+            });
+        }
+
+        let tbodyClutch = document.getElementById('cuerpo-ranking-clutch');
+        let clutchMap = {};
+
+        partidas.forEach(p => {
+            if (p.clutchWinnerTeam > 0) {
+                let winningEq = p.clutchWinnerTeam === 1 ? p.eq1 : p.eq2;
+                winningEq.forEach(id => {
+                    if (!clutchMap[id]) clutchMap[id] = 0;
+                    clutchMap[id]++;
+                });
+            }
+        });
+
+        let clutchCalculado = Object.keys(clutchMap)
+            .map(id => ({
+                jugador: perfilesMap[id] || 'Jugador',
+                remontadas: clutchMap[id]
+            }))
+            .sort((a, b) => b.remontadas - a.remontadas);
+
+        if (clutchCalculado.length > 0) {
+            tbodyClutch.innerHTML = '';
+            clutchCalculado.forEach((item, idx) => {
+                let badgeClass = idx === 0 ? 'badge-oro' : idx === 1 ? 'badge-plata' : idx === 2 ? 'badge-bronce' : '';
+                tbodyClutch.innerHTML += `
+                    <tr>
+                        <td style="text-align: center;" class="${badgeClass}">${idx + 1}°</td>
+                        <td style="font-weight: bold;">${item.jugador}</td>
+                        <td style="text-align: right; font-weight: 900; color: var(--accent-amber);">${item.remontadas} remontada${item.remontadas > 1 ? 's' : ''}</td>
+                    </tr>
+                `;
+            });
+        } else {
+            tbodyClutch.innerHTML = `<tr><td colspan="3" style="text-align: center; color: var(--text-muted); padding: 12px 0;">No hay registros de remontadas épicas.</td></tr>`;
+        }
+
+        let mesesMap = {};
+        partidas.forEach(p => {
+            if (!p.fecha_hora) return;
+            let fecha = new Date(p.fecha_hora);
+            let mesKey = `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, '0')}`;
+
+            if (!mesesMap[mesKey]) mesesMap[mesKey] = {};
+            let mesData = mesesMap[mesKey];
+
+            p.eq1.forEach(id => {
+                if (!mesData[id]) mesData[id] = { vic: 0, der: 0, partidasCount: 0 };
+                mesData[id].partidasCount++;
+                if (p.ganador === 1) mesData[id].vic++;
+                else if (p.ganador === 2) mesData[id].der++;
+            });
+            p.eq2.forEach(id => {
+                if (!mesData[id]) mesData[id] = { vic: 0, der: 0, partidasCount: 0 };
+                mesData[id].partidasCount++;
+                if (p.ganador === 2) mesData[id].vic++;
+                else if (p.ganador === 1) mesData[id].der++;
+            });
+        });
+
+        let contenedorMes = document.getElementById('lista-jugador-mes');
+        let mesesOrdenados = Object.keys(mesesMap).sort().reverse();
+        let htmlMeses = '';
+        let mesesConGanador = 0;
+
+        mesesOrdenados.forEach(mesKey => {
+            let jugadoresMes = mesesMap[mesKey];
+            let candidatosMes = [];
+
+            Object.keys(jugadoresMes).forEach(id => {
+                if (!jugadoresIds.has(id)) return;
+                let st = jugadoresMes[id];
+                if (st.partidasCount >= 30) {
+                    let ef = (st.vic / st.partidasCount) * 100;
+                    candidatosMes.push({ id, ...st, eficiencia: ef });
+                }
+            });
+
+            candidatosMes.sort((a, b) => b.eficiencia - a.eficiencia || b.vic - a.vic);
+
+            if (candidatosMes.length > 0) {
+                mesesConGanador++;
+                let ganadorMes = candidatosMes[0];
+                let nombreGanador = perfilesMap[ganadorMes.id] || 'Jugador';
+
+                let partesFecha = mesKey.split('-');
+                let nombreMesFormateado = obtenerNombreMes(parseInt(partesFecha[1])) + ' ' + partesFecha[0];
+
+                htmlMeses += `
+                    <div class="monthly-award">
+                        <div style="font-size: 0.75rem; color: var(--cyan-title); font-weight: bold; text-transform: uppercase;">📅 ${nombreMesFormateado}</div>
+                        <div style="font-size: 1.15rem; font-weight: 900; color: var(--text); margin-top: 4px;">👑 ${nombreGanador}</div>
+                        <div style="display: flex; justify-content: space-between; font-size: 0.8rem; color: var(--text-muted); margin-top: 6px;">
+                            <span>Eficiencia: <strong style="color: var(--accent-green);">${ganadorMes.eficiencia.toFixed(1)}%</strong></span>
+                            <span>Partidas: ${ganadorMes.partidasCount} (${ganadorMes.vic} V / ${ganadorMes.der} D)</span>
+                        </div>
+                    </div>
+                `;
+            }
+        });
+
+        if (mesesConGanador === 0) {
+            contenedorMes.innerHTML = `<div style="text-align: center; color: var(--text-muted); padding: 12px 0;">Ningún jugador ha alcanzado aún las 30 partidas mínimas en un mes calendario.</div>`;
+        } else {
+            contenedorMes.innerHTML = htmlMeses;
+        }
+    }
+
+    function obtenerNombreMes(num) {
+        const meses = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
+        return meses[num - 1] || '';
+    }
+</script>
+</body>
+</html>

@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="theme-color" content="#f1f5f9">
+    <title>Club Dominó y Romo</title>
+    <link rel="icon" type="image/png" href="logo.png">
+    <link rel="manifest" href="manifest.json">
+    <script src="offline-mode.js"></script>
+    <script>
+        (() => {
+            let pagina = 'login.html';
+
+            if (navigator.onLine === false) {
+                const permitidas = new Set([
+                    'lobby.html', 'apunte.html', 'mesa.html', 'perfil.html',
+                    'galardones.html', 'admin.html', 'historial.html',
+                    'consultas.html', 'torneos.html', 'tombola.html'
+                ]);
+                const guardada = localStorage.getItem('club_domino_ultima_pagina') || 'lobby.html';
+                const archivo = guardada.split(/[?#]/)[0].toLowerCase();
+                pagina = permitidas.has(archivo) ? guardada : 'lobby.html';
+            }
+
+            const destino = new URL('./' + pagina, window.location.href);
+            if (pagina === 'login.html') {
+                destino.search = window.location.search;
+                destino.hash = window.location.hash;
+            }
+            window.location.replace(destino.href);
+        })();
+    </script>
+    <noscript>
+        <meta http-equiv="refresh" content="0; url=login.html">
+    </noscript>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            min-height: 100vh;
+            margin: 0;
+            display: grid;
+            place-items: center;
+            background: #f1f5f9;
+            color: #0f172a;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        }
+        main { text-align: center; }
+        img { width: 132px; height: 132px; object-fit: contain; }
+        p { margin: 4px 0 14px; color: #64748b; }
+        a { color: #0284c7; font-weight: 700; }
+    </style>
+</head>
+<body>
+    <main>
+        <img src="logo.png" alt="Club Dominó y Romo">
+        <p>Abriendo la aplicación…</p>
+        <a href="login.html">Continuar</a>
+    </main>
+</body>
+</html>

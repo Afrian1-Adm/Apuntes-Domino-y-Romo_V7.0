@@ -1,0 +1,1612 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <link rel="manifest" href="manifest.json">
+    <script src="offline-mode.js"></script>
+    <script src="vista-app.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="app-notifications.js"></script>
+    <meta name="theme-color" content="#f1f5f9">
+    <title>Mesa de Dominó - Apuntes Locales</title>
+    <script>
+        (function aplicarTemaAntesDePintar() {
+            try {
+                const temaGuardado = localStorage.getItem('theme') || localStorage.getItem('domino_tema') || 'light';
+                const tema = ['light', 'dark', 'amoled'].includes(temaGuardado) ? temaGuardado : 'light';
+                if (tema === 'light') document.documentElement.classList.add('light-mode');
+                if (tema === 'amoled') document.documentElement.classList.add('amoled-mode');
+            } catch (error) {
+                // El modo claro es el valor seguro si el almacenamiento no está disponible.
+                document.documentElement.classList.add('light-mode');
+            }
+        })();
+    </script>
+    <style>
+    :root {
+        --bg-color: #0b1329;
+        --card-bg: #152238;
+        --card-inner: #1c2d4a;
+        --accent: #2563eb;
+        --text: #f8fafc;
+        --text-muted: #94a3b8;
+        --pareja1: #38bdf8;
+        --pareja2: #f87171;
+        --border-color: #1e293b;
+        --input-bg: #1c2d4a;
+        --input-text: #ffffff;
+        --input-disabled: #111827;
+    }
+
+    body.light-mode, html.light-mode body {
+        --bg-color: #f1f5f9;
+        --card-bg: #ffffff;
+        --card-inner: #f8fafc;
+        --accent: #2563eb;
+        --text: #0f172a;
+        --text-muted: #64748b;
+        --pareja1: #0284c7;
+        --pareja2: #dc2626;
+        --border-color: #e2e8f0;
+        --input-bg: #ffffff;
+        --input-text: #0f172a;
+        --input-disabled: #e2e8f0;
+    }
+
+    body.amoled-mode, html.amoled-mode body {
+        --bg-color: #000000;
+        --card-bg: #050505;
+        --card-inner: #0d0d0d;
+        --accent: #3b82f6;
+        --text: #f8fafc;
+        --text-muted: #a1a1aa;
+        --pareja1: #38bdf8;
+        --pareja2: #fb7185;
+        --border-color: #262626;
+        --input-bg: #090909;
+        --input-text: #ffffff;
+        --input-disabled: #111111;
+        color-scheme: dark;
+    }
+
+    body.amoled-mode .config-modal, html.amoled-mode body .config-modal { background: rgba(0, 0, 0, 0.78); }
+    body.amoled-mode .card, html.amoled-mode body .card { box-shadow: 0 4px 18px rgba(0, 0, 0, 0.72); }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, sans-serif; }
+    body { background-color: var(--bg-color); color: var(--text); padding: 16px; display: flex; justify-content: center; transition: background-color 0.3s, color 0.3s; }
+    .container { width: 100%; max-width: 650px; display: flex; flex-direction: column; gap: 16px; }
+    
+    .top-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+    .top-bar-actions { display: flex; gap: 8px; align-items: center; }
+    .btn-back { background: var(--card-bg); color: var(--text); text-decoration: none; padding: 8px 14px; border-radius: 8px; font-weight: bold; border: 1px solid var(--border-color); font-size: 0.85rem; cursor: pointer; }
+    .btn-theme { background: var(--card-bg); color: var(--text); border: 1px solid var(--border-color); padding: 8px 12px; border-radius: 8px; cursor: pointer; font-size: 0.9rem; font-weight: 700; display: flex; align-items: center; justify-content: center; gap: 6px; white-space: nowrap; transition: opacity 0.2s; }
+    .btn-theme:hover { opacity: 0.85; }
+    .live-badge { color: #22c55e; font-size: 0.85rem; font-weight: bold; background: rgba(34, 197, 94, 0.1); padding: 4px 10px; border-radius: 20px; border: 1px solid rgba(34, 197, 94, 0.2); }
+
+    .card { background: var(--card-bg); border-radius: 16px; padding: 20px; border: 1px solid var(--border-color); box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); transition: background-color 0.3s, border-color 0.3s; }
+    .winner-banner { background: #065f46; border: 1px solid #10b981; color: #a7f3d0; padding: 14px; border-radius: 12px; font-size: 1rem; text-align: center; font-weight: bold; margin-bottom: 12px; }
+    
+    .lisa-banner { 
+        background: linear-gradient(135deg, #f59e0b, #ef4444); 
+        color: white; 
+        padding: 16px; 
+        border-radius: 12px; 
+        font-weight: bold; 
+        text-align: center; 
+        font-size: 1.05rem; 
+        box-shadow: 0 4px 20px rgba(239, 68, 68, 0.5); 
+        animation: pulseAlert 0.6s ease infinite alternate; 
+        border: 2px solid #fcd34d;
+        margin-bottom: 12px;
+    }
+    @keyframes pulseAlert { 
+        from { transform: scale(1); } 
+        to { transform: scale(1.02); } 
+    }
+
+    .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+    .performance-header { gap: 8px; flex-wrap: wrap; }
+    .card-title { font-size: 1.1rem; font-weight: bold; display: flex; align-items: center; gap: 8px; color: var(--text); }
+    
+    .marcador-grid, .inputs-grid, .config-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .equipo-card { background: var(--card-inner); border-radius: 12px; padding: 16px 12px; text-align: center; border: 1px solid var(--border-color); transition: background-color 0.3s; }
+    .equipo-titulo { font-size: 0.75rem; font-weight: bold; color: var(--text-muted); text-transform: uppercase; margin-bottom: 4px; letter-spacing: 0.5px; }
+    .equipo-nombres { font-size: 0.85rem; font-weight: bold; margin-bottom: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .p1-color { color: var(--pareja1); }
+    .p2-color { color: var(--pareja2); }
+    .score-num { font-size: 2.5rem; font-weight: 800; line-height: 1; }
+
+    input { width: 100%; padding: 12px; border-radius: 10px; border: 1px solid var(--border-color); background: var(--input-bg); color: var(--input-text); font-size: 0.9rem; text-align: center; min-height: 48px; transition: background-color 0.3s, color 0.3s, border-color 0.3s; }
+    input::placeholder { color: var(--text-muted); opacity: 0.8; font-size: 0.85rem; }
+    input:disabled { opacity: 0.5; cursor: not-allowed; background: var(--input-disabled); }
+    
+    .config-input { text-align: left; padding: 10px; font-size: 0.95rem; font-weight: 600; min-height: 40px; }
+
+    .btn { width: 100%; min-height: 48px; padding: 12px; border: none; border-radius: 10px; font-weight: bold; cursor: pointer; background: var(--accent); color: white; font-size: 1rem; margin-top: 12px; transition: opacity 0.2s; }
+    .btn:hover:not(:disabled) { opacity: 0.9; }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-success { background: #059669; }
+    .btn-danger { background: #dc2626; margin-top: 16px; font-size: 0.9rem; }
+    .btn-secondary { background: #64748b; margin-top: 0; color: white; }
+
+    .config-toggle { width: auto; min-height: 34px; padding: 7px 10px; margin-top: 0; font-size: 0.8rem; display: inline-flex; align-items: center; gap: 5px; }
+    .config-toggle-icon { font-size: 0.95rem; line-height: 1; }
+    .config-modal { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; padding: 16px; background: rgba(15, 23, 42, 0.42); backdrop-filter: blur(3px); }
+    .config-modal.hidden { display: none !important; }
+    .config-dialog { width: min(100%, 650px); max-height: min(92vh, 760px); overflow-y: auto; box-shadow: 0 18px 50px rgba(15, 23, 42, 0.25); }
+    body.modal-abierto { overflow: hidden; }
+    .config-close { width: 34px; min-height: 34px; padding: 6px; margin: 0; border: 1px solid var(--border-color); border-radius: 9px; background: var(--card-inner); color: var(--text); cursor: pointer; font-size: 1.1rem; line-height: 1; }
+    .open-config, .open-history { width: auto; min-height: 36px; padding: 7px 11px; margin: 0; border: 1px solid #cbd5e1; background: #e2e8f0; color: #334155; font-size: 0.8rem; white-space: nowrap; }
+    .open-config:hover:not(:disabled), .open-history:hover:not(:disabled),
+    .open-config:focus-visible, .open-history:focus-visible { background: #cbd5e1; color: #1e293b; opacity: 1; outline: 2px solid rgba(37, 99, 235, 0.35); outline-offset: 2px; }
+    .match-history-dialog { width: min(100%, 980px); }
+    .match-history-summary { margin: -2px 0 12px; color: var(--text-muted); font-size: 0.78rem; }
+    .local-history-table-wrap { overflow-x: auto; border: 1px solid var(--border-color); border-radius: 12px; }
+    .local-history-table { width: 100%; min-width: 900px; border-collapse: collapse; text-align: left; font-size: 0.82rem; }
+    .local-history-table th { padding: 10px 9px; color: var(--text-muted); background: rgba(148, 163, 184, 0.06); font-size: 0.69rem; text-transform: uppercase; letter-spacing: 0.45px; border-bottom: 1px solid var(--border-color); white-space: nowrap; }
+    .local-history-table td { padding: 11px 9px; border-bottom: 1px solid var(--border-color); color: var(--text); vertical-align: middle; }
+    .local-history-table tr:last-child td { border-bottom: none; }
+    .history-meta-badge, .history-winner-badge, .history-lisa-badge { display: inline-flex; align-items: center; width: max-content; padding: 4px 7px; border-radius: 6px; font-size: 0.72rem; font-weight: 800; white-space: nowrap; }
+    .history-meta-badge { color: var(--accent); background: rgba(37, 99, 235, 0.12); }
+    .history-winner-badge.p1 { color: #059669; background: rgba(5, 150, 105, 0.12); }
+    .history-winner-badge.p2 { color: var(--pareja2); background: rgba(220, 38, 38, 0.1); }
+    .history-winner-badge.tie { color: var(--text-muted); background: rgba(148, 163, 184, 0.12); }
+    .history-lisa-badge { color: #059669; border: 1px solid rgba(5, 150, 105, 0.25); background: rgba(5, 150, 105, 0.08); }
+    .history-regular-label { color: var(--text-muted); font-size: 0.72rem; white-space: nowrap; }
+    .history-team { min-width: 132px; font-weight: 700; line-height: 1.3; overflow-wrap: anywhere; }
+    .history-score { text-align: center; font-size: 1rem; font-weight: 850; }
+    .history-score.winner { color: #059669; }
+    .btn-edit-match { min-height: 34px; padding: 7px 10px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--card-inner); color: var(--text); font: inherit; font-size: 0.74rem; font-weight: 800; cursor: pointer; white-space: nowrap; }
+    .btn-edit-match:hover, .btn-edit-match:focus-visible { border-color: var(--accent); color: var(--accent); outline: none; }
+    .local-history-mobile-list { display: none; }
+    .local-match-card { padding: 13px; border: 1px solid var(--border-color); border-radius: 15px; background: var(--card-inner); }
+    .local-match-top, .local-match-footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+    .local-match-date { font-size: 0.78rem; font-weight: 800; }
+    .local-match-time { display: block; margin-top: 2px; color: var(--text-muted); font-size: 0.7rem; font-weight: 500; }
+    .local-match-scoreboard { display: grid; grid-template-columns: minmax(0, 1fr) 48px; gap: 8px 12px; align-items: center; margin: 11px 0; padding: 10px 0; border-top: 1px solid var(--border-color); border-bottom: 1px solid var(--border-color); }
+    .local-match-team { min-width: 0; font-size: 0.82rem; font-weight: 750; line-height: 1.3; overflow-wrap: anywhere; }
+    .local-match-score { text-align: right; font-size: 1.2rem; font-weight: 900; }
+    .local-match-score.winner { color: #059669; }
+    .local-match-footer { flex-wrap: wrap; }
+    .match-history-empty { color: var(--text-muted); text-align: center; padding: 24px 10px; }
+    .edit-match-modal { z-index: 1010; }
+    .edit-match-dialog { width: min(100%, 700px); }
+    .edit-match-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .edit-team-panel { padding: 12px; border: 1px solid var(--border-color); border-radius: 12px; background: var(--card-inner); }
+    .edit-team-panel .config-input + .label-small { margin-top: 8px; }
+    .edit-match-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+    .edit-match-actions .btn { width: auto; min-width: 120px; margin-top: 0; }
+    .manage-players-btn { border: 1px solid var(--border-color); background: var(--card-inner); color: var(--text); }
+    .manage-players-btn:hover:not(:disabled), .manage-players-btn:focus-visible { border-color: var(--accent); color: var(--accent); opacity: 1; outline: none; }
+    .players-manager-modal { z-index: 1020; }
+    .players-manager-dialog { width: min(100%, 560px); }
+    .players-manager-note { margin: -2px 0 12px; color: var(--text-muted); font-size: 0.8rem; line-height: 1.4; }
+    .player-manager-form { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; margin-bottom: 14px; }
+    .player-manager-form .btn { width: auto; min-height: 44px; margin: 0; padding: 9px 14px; }
+    .player-manager-form .manager-cancel-edit { grid-column: 1 / -1; justify-self: end; min-height: 34px; padding: 6px 10px; font-size: 0.78rem; }
+    .player-manager-list { display: flex; flex-direction: column; gap: 8px; max-height: 360px; overflow-y: auto; }
+    .player-manager-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 10px 11px; border: 1px solid var(--border-color); border-radius: 11px; background: var(--card-inner); }
+    .player-manager-name { min-width: 0; font-weight: 750; overflow-wrap: anywhere; }
+    .player-manager-actions { display: flex; gap: 6px; }
+    .player-manager-action { min-height: 32px; padding: 6px 9px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--card-bg); color: var(--text); font: inherit; font-size: 0.72rem; font-weight: 800; cursor: pointer; }
+    .player-manager-action.edit:hover, .player-manager-action.edit:focus-visible { border-color: var(--accent); color: var(--accent); outline: none; }
+    .player-manager-action.delete:hover, .player-manager-action.delete:focus-visible { border-color: #dc2626; color: #dc2626; outline: none; }
+    .player-manager-empty { padding: 22px 12px; border: 1px dashed var(--border-color); border-radius: 11px; color: var(--text-muted); text-align: center; font-size: 0.82rem; }
+    .player-picker[aria-expanded="true"] { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.12); }
+    .players-dropdown { position: fixed; z-index: 1040; max-height: 230px; overflow-y: auto; padding: 6px; border: 1px solid var(--border-color); border-radius: 10px; background: var(--card-bg); box-shadow: 0 14px 35px rgba(15, 23, 42, 0.22); }
+    .players-dropdown.hidden { display: none !important; }
+    .players-dropdown-option { display: block; width: 100%; padding: 9px 10px; border: 0; border-radius: 7px; background: transparent; color: var(--text); font: inherit; font-size: 0.86rem; font-weight: 700; text-align: left; cursor: pointer; }
+    .players-dropdown-option:hover, .players-dropdown-option:focus-visible { background: var(--card-inner); color: var(--accent); outline: none; }
+    .players-dropdown-empty { padding: 10px; color: var(--text-muted); font-size: 0.78rem; line-height: 1.35; }
+
+    .label-small { font-size: 0.75rem; color: var(--text-muted); font-weight: bold; display: block; margin-bottom: 4px; }
+    .section-subtitle { font-size: 0.85rem; font-weight: bold; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
+
+    .tabla-historial { width: 100%; border-collapse: collapse; text-align: left; font-size: 0.85rem; }
+    .tabla-historial th { padding: 12px 10px; color: var(--text-muted); font-weight: 600; border-bottom: 1px solid var(--border-color); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.8px; }
+    .tabla-historial td { padding: 12px 10px; border-bottom: 1px solid var(--border-color); color: var(--text); vertical-align: middle; }
+    .tabla-historial tr:last-child td { border-bottom: none; }
+    .tabla-historial tr.anulada { opacity: 0.35; text-decoration: line-through; }
+    
+    .btn-tabla-anular {
+        background: #dc2626;
+        color: white;
+        border: none;
+        width: 32px;
+        height: 32px;
+        border-radius: 8px;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.9rem;
+        transition: opacity 0.2s;
+    }
+    .btn-tabla-anular:hover { opacity: 0.85; }
+
+    .eficiencia-cell-container {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 8px;
+    }
+    .progress-bar-bg {
+        width: 45px;
+        height: 8px;
+        background: rgba(148, 163, 184, 0.2);
+        border-radius: 4px;
+        overflow: hidden;
+        display: inline-block;
+    }
+    .progress-bar-fill {
+        height: 100%;
+        background: #10b981;
+        border-radius: 4px;
+        transition: width 0.4s ease;
+    }
+    .eficiencia-text {
+        font-weight: bold;
+        min-width: 42px;
+        text-align: right;
+    }
+
+    .hidden { display: none !important; }
+
+    @media (max-width: 700px) {
+        .local-history-table-wrap { display: none; }
+        .local-history-mobile-list { display: flex; flex-direction: column; gap: 10px; }
+        .edit-match-grid { grid-template-columns: 1fr; }
+        .edit-match-actions { flex-direction: column-reverse; }
+        .edit-match-actions .btn { width: 100%; }
+        .player-manager-form { grid-template-columns: 1fr; }
+        .player-manager-form .btn { width: 100%; }
+        .player-manager-form .manager-cancel-edit { grid-column: auto; justify-self: stretch; }
+    }
+
+    @media (max-width: 480px) {
+        body { padding: 10px; }
+        .container { gap: 12px; }
+        .card { padding: 14px; }
+        .config-grid { grid-template-columns: 1fr; }
+        .marcador-grid, .inputs-grid { gap: 8px; }
+        .tabla-historial { font-size: 0.9rem; }
+        .tabla-historial th, .tabla-historial td { padding: 10px 8px; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        *, *::before, *::after {
+            transition-duration: 0.01ms !important;
+            animation-duration: 0.01ms !important;
+            animation-iteration-count: 1 !important;
+        }
+    }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="top-bar">
+        <a href="lobby.html" class="btn-back">← Volver</a>
+        <div class="top-bar-actions">
+            <button class="btn-theme" id="btn-theme-toggle" onclick="toggleTema()" title="Cambiar a modo oscuro" aria-label="Cambiar a modo oscuro"><span id="btn-theme-icon" aria-hidden="true">☀️</span><span id="btn-theme-label">Claro</span></button>
+            <span class="live-badge" id="status-badge">• MODO LOCAL</span>
+        </div>
+    </div>
+
+    <div id="lisa-box" class="lisa-banner hidden"></div>
+    <div id="winner-box" class="winner-banner hidden"></div>
+
+    <!-- 1. Tarjeta de Configuración de Mesa -->
+    <div id="configuracion-modal" class="config-modal hidden" role="dialog" aria-modal="true" aria-labelledby="configuracion-titulo" onclick="if (event.target === this) toggleConfiguracion()">
+    <div class="card config-dialog" id="configuracion-card" onclick="event.stopPropagation()">
+        <div class="card-header" style="margin-bottom: 12px;">
+            <div class="card-title" id="configuracion-titulo" style="font-size: 1rem;">⚙️ Configuración de Mesa</div>
+            <button class="config-close" id="btn-config-close" type="button" onclick="toggleConfiguracion()" aria-label="Cerrar configuración">×</button>
+        </div>
+        <div id="config-content" class="config-content" style="display: flex; flex-direction: column; gap: 12px;">
+            <div class="config-grid">
+                <div>
+                    <span class="section-subtitle p1-color">Pareja 1</span>
+                    <label class="label-small">Jugador 1:</label>
+                    <input type="text" id="cfg-j1" class="config-input player-picker" placeholder="Nombre J1" autocomplete="off" role="combobox" aria-autocomplete="list" aria-haspopup="listbox" aria-expanded="false" aria-controls="jugadores-dropdown">
+                    <label class="label-small" style="margin-top: 8px;">Jugador 3:</label>
+                    <input type="text" id="cfg-j3" class="config-input player-picker" placeholder="Nombre J3" autocomplete="off" role="combobox" aria-autocomplete="list" aria-haspopup="listbox" aria-expanded="false" aria-controls="jugadores-dropdown">
+                </div>
+                <div>
+                    <span class="section-subtitle p2-color">Pareja 2</span>
+                    <label class="label-small">Jugador 2:</label>
+                    <input type="text" id="cfg-j2" class="config-input player-picker" placeholder="Nombre J2" autocomplete="off" role="combobox" aria-autocomplete="list" aria-haspopup="listbox" aria-expanded="false" aria-controls="jugadores-dropdown">
+                    <label class="label-small" style="margin-top: 8px;">Jugador 4:</label>
+                    <input type="text" id="cfg-j4" class="config-input player-picker" placeholder="Nombre J4" autocomplete="off" role="combobox" aria-autocomplete="list" aria-haspopup="listbox" aria-expanded="false" aria-controls="jugadores-dropdown">
+                </div>
+            </div>
+            <div>
+                <label class="label-small" style="color: var(--accent);">Meta de Puntos:</label>
+                <input type="number" id="cfg-meta" value="200" min="1" step="1" style="min-height: 40px;" inputmode="numeric">
+            </div>
+            <button class="btn btn-secondary" onclick="guardarConfig()">Actualizar Nombres / Meta</button>
+            <button class="btn manage-players-btn" id="btn-open-players-manager" type="button" onclick="toggleGestorJugadores()">👥 Gestionar jugadores guardados</button>
+        </div>
+    </div>
+    </div>
+
+    <div id="gestor-jugadores-modal" class="config-modal players-manager-modal hidden" role="dialog" aria-modal="true" aria-labelledby="gestor-jugadores-titulo" onclick="if (event.target === this) cerrarGestorJugadores()">
+        <div class="card config-dialog players-manager-dialog" onclick="event.stopPropagation()">
+            <div class="card-header" style="margin-bottom: 12px;">
+                <div class="card-title" id="gestor-jugadores-titulo" style="font-size: 1rem;">👥 Jugadores Guardados</div>
+                <button class="config-close" id="btn-players-manager-close" type="button" onclick="cerrarGestorJugadores()" aria-label="Cerrar gestión de jugadores">×</button>
+            </div>
+            <p class="players-manager-note">Agrega los nombres una sola vez. Luego podrás seleccionarlos al tocar cualquier campo de jugador.</p>
+            <form class="player-manager-form" onsubmit="guardarJugadorDesdeGestor(event)">
+                <input type="text" id="gestor-jugador-input" class="config-input" placeholder="Nombre del jugador" maxlength="60" autocomplete="off" required>
+                <button class="btn btn-success" id="btn-guardar-jugador" type="submit">Agregar</button>
+                <button class="btn btn-secondary manager-cancel-edit hidden" id="btn-cancelar-edicion-jugador" type="button" onclick="cancelarEdicionJugador()">Cancelar edición</button>
+            </form>
+            <div id="gestor-jugadores-lista" class="player-manager-list" aria-live="polite"></div>
+        </div>
+    </div>
+
+    <!-- 2. Tarjeta Combinada: Marcador Global y Anotación de Manos -->
+    <div class="card">
+        <div class="card-header" style="margin-bottom: 12px;">
+            <div class="card-title" style="font-size: 0.95rem; color: var(--accent);" id="meta-text">Meta: 200 pts</div>
+            <button class="btn btn-secondary open-config" id="btn-open-config" type="button" onclick="toggleConfiguracion()">⚙️ Configurar mesa</button>
+        </div>
+        
+        <div class="marcador-grid" style="margin-bottom: 16px;">
+            <div class="equipo-card">
+                <div class="equipo-titulo">Pareja 1</div>
+                <div id="p1-nombres" class="equipo-nombres p1-color">Jugador 1 / 3</div>
+                <div id="p1-score" class="score-num p1-color">0</div>
+            </div>
+
+            <div class="equipo-card">
+                <div class="equipo-titulo">Pareja 2</div>
+                <div id="p2-nombres" class="equipo-nombres p2-color">Jugador 2 / 4</div>
+                <div id="p2-score" class="score-num p2-color">0</div>
+            </div>
+        </div>
+
+        <form onsubmit="guardarMano(event)">
+            <div class="inputs-grid">
+                <input type="number" id="input-p1" placeholder="Pts Pareja 1" min="0" step="1" inputmode="numeric">
+                <input type="number" id="input-p2" placeholder="Pts Pareja 2" min="0" step="1" inputmode="numeric">
+            </div>
+            <button type="submit" class="btn" id="btn-anotar">Anotar Mano</button>
+        </form>
+    </div>
+
+    <div id="card-finalizar-partida" class="hidden">
+        <button class="btn btn-success" onclick="registrarPartidaTerminada()" style="font-size: 1.05rem;">📥 Registrar Partida en el Historial y Jugar Otra</button>
+    </div>
+
+    <!-- 3. Historial de Manos -->
+    <div class="card">
+        <div class="card-header" style="margin-bottom: 12px;">
+            <div class="card-title" style="font-size: 1rem;">📜 Historial de Manos</div>
+        </div>
+        <div style="overflow-x: auto;">
+            <table class="tabla-historial">
+                <thead>
+                    <tr>
+                        <th style="width: 15%;">#</th>
+                        <th style="width: 35%; color: var(--pareja1);">Pareja 1</th>
+                        <th style="width: 35%; color: var(--pareja2);">Pareja 2</th>
+                        <th style="width: 15%; text-align: center;">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody id="lista-manos-actuales">
+                    <tr><td colspan="4" style="color: var(--text-muted); text-align: center; padding: 16px;">No hay manos anotadas en esta partida.</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- 4. Tarjeta de Rendimiento de Jugadores -->
+    <div class="card">
+        <div class="card-header performance-header">
+            <div class="card-title">📊 Rendimiento por Partidas</div>
+            <button class="btn btn-secondary open-history" id="btn-open-history" type="button" onclick="toggleHistorialPartidas()" aria-expanded="false" aria-controls="historial-partidas-modal">📜 Historial</button>
+        </div>
+        <div style="overflow-x: auto;">
+            <table class="tabla-historial">
+                <thead>
+                    <tr>
+                        <th>Jugador</th>
+                        <th style="text-align: center;">G</th>
+                        <th style="text-align: center;">P</th>
+                        <th style="text-align: center;">Total</th>
+                        <th style="text-align: right;">Eficiencia</th>
+                    </tr>
+                </thead>
+                <tbody id="lista-jugadores-stats">
+                    <tr><td colspan="5" style="color: var(--text-muted); text-align: center; padding: 24px;">Sin partidas registradas aún.</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <button class="btn btn-danger" onclick="reiniciarTodo()">🔄 Reiniciar Todo el Historial</button>
+    </div>
+</div>
+
+<div id="historial-partidas-modal" class="config-modal hidden" role="dialog" aria-modal="true" aria-labelledby="historial-partidas-titulo" onclick="if (event.target === this) toggleHistorialPartidas()">
+    <div class="card config-dialog match-history-dialog" onclick="event.stopPropagation()">
+        <div class="card-header" style="margin-bottom: 12px;">
+            <div class="card-title" id="historial-partidas-titulo" style="font-size: 1rem;">📜 Historial de Partidas</div>
+            <button class="config-close" id="btn-history-close" type="button" onclick="toggleHistorialPartidas()" aria-label="Cerrar historial de partidas">×</button>
+        </div>
+        <div id="historial-partidas-resumen" class="match-history-summary"></div>
+        <div id="historial-partidas-contenido" class="local-history-table-wrap"></div>
+        <div id="historial-partidas-movil" class="local-history-mobile-list" aria-live="polite"></div>
+    </div>
+</div>
+
+<div id="editar-partida-modal" class="config-modal edit-match-modal hidden" role="dialog" aria-modal="true" aria-labelledby="editar-partida-titulo" onclick="if (event.target === this) cerrarEditarPartida()">
+    <div class="card config-dialog edit-match-dialog" onclick="event.stopPropagation()">
+        <div class="card-header" style="margin-bottom: 12px;">
+            <div class="card-title" id="editar-partida-titulo" style="font-size: 1rem;">✏️ Editar Partida</div>
+            <button class="config-close" id="btn-edit-close" type="button" onclick="cerrarEditarPartida()" aria-label="Cerrar edición de partida">×</button>
+        </div>
+
+        <form id="form-editar-partida" onsubmit="guardarEdicionPartida(event)">
+            <div class="edit-match-grid" style="margin-bottom: 12px;">
+                <div>
+                    <label class="label-small" for="edit-fecha">Fecha y hora:</label>
+                    <input type="datetime-local" id="edit-fecha" class="config-input" required>
+                </div>
+                <div>
+                    <label class="label-small" for="edit-meta" style="color: var(--accent);">Meta de puntos:</label>
+                    <input type="number" id="edit-meta" class="config-input" min="1" step="1" inputmode="numeric" required>
+                </div>
+            </div>
+
+            <div class="edit-match-grid">
+                <div class="edit-team-panel">
+                    <div class="section-subtitle p1-color">Pareja 1</div>
+                    <label class="label-small" for="edit-j1">Jugador 1:</label>
+                    <input type="text" id="edit-j1" class="config-input player-picker" required autocomplete="off" role="combobox" aria-autocomplete="list" aria-haspopup="listbox" aria-expanded="false" aria-controls="jugadores-dropdown">
+                    <label class="label-small" for="edit-j3">Jugador 3:</label>
+                    <input type="text" id="edit-j3" class="config-input player-picker" required autocomplete="off" role="combobox" aria-autocomplete="list" aria-haspopup="listbox" aria-expanded="false" aria-controls="jugadores-dropdown">
+                    <label class="label-small" for="edit-score1">Puntos de la pareja 1:</label>
+                    <input type="number" id="edit-score1" class="config-input" min="0" step="1" inputmode="numeric" required>
+                </div>
+
+                <div class="edit-team-panel">
+                    <div class="section-subtitle p2-color">Pareja 2</div>
+                    <label class="label-small" for="edit-j2">Jugador 2:</label>
+                    <input type="text" id="edit-j2" class="config-input player-picker" required autocomplete="off" role="combobox" aria-autocomplete="list" aria-haspopup="listbox" aria-expanded="false" aria-controls="jugadores-dropdown">
+                    <label class="label-small" for="edit-j4">Jugador 4:</label>
+                    <input type="text" id="edit-j4" class="config-input player-picker" required autocomplete="off" role="combobox" aria-autocomplete="list" aria-haspopup="listbox" aria-expanded="false" aria-controls="jugadores-dropdown">
+                    <label class="label-small" for="edit-score2">Puntos de la pareja 2:</label>
+                    <input type="number" id="edit-score2" class="config-input" min="0" step="1" inputmode="numeric" required>
+                </div>
+            </div>
+
+            <div class="edit-match-actions">
+                <button class="btn btn-secondary" type="button" onclick="cerrarEditarPartida()">Cancelar</button>
+                <button class="btn btn-success" type="submit">Guardar cambios</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div id="jugadores-dropdown" class="players-dropdown hidden" role="listbox" aria-label="Jugadores guardados"></div>
+
+<script>
+    function crearEstadoInicial() {
+        return {
+            meta: 200,
+            j1: 'Jugador 1',
+            j2: 'Jugador 2',
+            j3: 'Jugador 3',
+            j4: 'Jugador 4',
+            manosActuales: [],
+            historialPartidas: [],
+            lisaMostrada: false
+        };
+    }
+
+    function cargarEstadoLocal() {
+        try {
+            const guardado = JSON.parse(localStorage.getItem('domino_partida_local_4j') || 'null');
+            if (!guardado || typeof guardado !== 'object') return crearEstadoInicial();
+
+            const estado = { ...crearEstadoInicial(), ...guardado };
+            estado.meta = Number.isFinite(Number(guardado.meta)) && Number(guardado.meta) > 0
+                ? Number(guardado.meta)
+                : 200;
+            estado.manosActuales = Array.isArray(guardado.manosActuales)
+                ? guardado.manosActuales.map(mano => ({
+                    p1: Number(mano?.p1) || 0,
+                    p2: Number(mano?.p2) || 0,
+                    anulada: Boolean(mano?.anulada)
+                }))
+                : [];
+            estado.historialPartidas = Array.isArray(guardado.historialPartidas)
+                ? guardado.historialPartidas
+                : [];
+            return estado;
+        } catch (error) {
+            console.warn('No se pudo leer la partida local guardada. Se inicia una nueva.', error);
+            return crearEstadoInicial();
+        }
+    }
+
+    function guardarEstadoLocal() {
+        try {
+            localStorage.setItem('domino_partida_local_4j', JSON.stringify(juegoLocal));
+        } catch (error) {
+            console.warn('No se pudo guardar la partida local.', error);
+        }
+    }
+
+    let juegoLocal = cargarEstadoLocal();
+    let contextoAudioAlerta = null;
+    const JUGADORES_GUARDADOS_KEY = 'domino_jugadores_guardados';
+    let campoJugadorActivo = null;
+    let indicePartidaEditando = null;
+    let indiceJugadorEditando = null;
+    let omitirProximaAperturaSugerencias = false;
+
+    function obtenerJugadoresGuardados() {
+        try {
+            const guardados = JSON.parse(localStorage.getItem(JUGADORES_GUARDADOS_KEY) || '[]');
+            if (!Array.isArray(guardados)) return [];
+            return guardados.filter(nombre => typeof nombre === 'string' && nombre.trim()).map(nombre => nombre.trim());
+        } catch (error) {
+            console.warn('No se pudo leer la lista de jugadores guardados.', error);
+            return [];
+        }
+    }
+
+    function guardarListaJugadores(nombres) {
+        const vistos = new Set();
+        const listaLimpia = nombres
+            .map(nombre => String(nombre || '').trim())
+            .filter(nombre => {
+                if (!nombre) return false;
+                const clave = nombre.toLocaleLowerCase();
+                if (vistos.has(clave)) return false;
+                vistos.add(clave);
+                return true;
+            })
+            .slice(0, 64);
+
+        try {
+            localStorage.setItem(JUGADORES_GUARDADOS_KEY, JSON.stringify(listaLimpia));
+        } catch (error) {
+            console.warn('No se pudo guardar la lista de jugadores.', error);
+            alert('No se pudo guardar la lista de jugadores en este dispositivo.');
+            return false;
+        }
+
+        renderizarGestorJugadores();
+        if (campoJugadorActivo && document.activeElement === campoJugadorActivo) {
+            mostrarSugerenciasJugadores(campoJugadorActivo, false);
+        }
+        return true;
+    }
+
+    function ocultarSugerenciasJugadores() {
+        const dropdown = document.getElementById('jugadores-dropdown');
+        if (campoJugadorActivo) campoJugadorActivo.setAttribute('aria-expanded', 'false');
+        dropdown?.classList.add('hidden');
+    }
+
+    function posicionarSugerenciasJugadores(input) {
+        const dropdown = document.getElementById('jugadores-dropdown');
+        if (!dropdown || !input) return;
+
+        const rect = input.getBoundingClientRect();
+        dropdown.style.left = `${Math.max(8, rect.left)}px`;
+        dropdown.style.width = `${Math.max(180, rect.width)}px`;
+        dropdown.style.right = 'auto';
+
+        const abrirArriba = window.innerHeight - rect.bottom < 245 && rect.top > 245;
+        if (abrirArriba) {
+            dropdown.style.top = 'auto';
+            dropdown.style.bottom = `${window.innerHeight - rect.top + 4}px`;
+        } else {
+            dropdown.style.top = `${rect.bottom + 4}px`;
+            dropdown.style.bottom = 'auto';
+        }
+    }
+
+    function mostrarSugerenciasJugadores(input, filtrarPorTexto = false) {
+        const dropdown = document.getElementById('jugadores-dropdown');
+        if (!dropdown || !input) return;
+
+        if (campoJugadorActivo && campoJugadorActivo !== input) {
+            campoJugadorActivo.setAttribute('aria-expanded', 'false');
+        }
+        campoJugadorActivo = input;
+
+        const consulta = filtrarPorTexto ? input.value.trim().toLocaleLowerCase() : '';
+        const jugadores = obtenerJugadoresGuardados().filter(nombre =>
+            !consulta || nombre.toLocaleLowerCase().includes(consulta)
+        );
+
+        dropdown.innerHTML = '';
+        if (jugadores.length === 0) {
+            const vacio = document.createElement('div');
+            vacio.className = 'players-dropdown-empty';
+            vacio.textContent = obtenerJugadoresGuardados().length === 0
+                ? 'No hay jugadores guardados. Usa “Gestionar jugadores guardados” para agregarlos.'
+                : 'No hay nombres que coincidan con la búsqueda.';
+            dropdown.appendChild(vacio);
+        } else {
+            jugadores.forEach(nombre => {
+                const opcion = document.createElement('button');
+                opcion.type = 'button';
+                opcion.className = 'players-dropdown-option';
+                opcion.setAttribute('role', 'option');
+                opcion.textContent = nombre;
+                opcion.addEventListener('pointerdown', event => event.preventDefault());
+                opcion.addEventListener('click', () => {
+                    input.value = nombre;
+                    ocultarSugerenciasJugadores();
+                    omitirProximaAperturaSugerencias = true;
+                    input.focus();
+                    window.requestAnimationFrame(() => { omitirProximaAperturaSugerencias = false; });
+                });
+                dropdown.appendChild(opcion);
+            });
+        }
+
+        input.setAttribute('aria-expanded', 'true');
+        dropdown.classList.remove('hidden');
+        posicionarSugerenciasJugadores(input);
+    }
+
+    function inicializarSelectoresJugadores() {
+        document.querySelectorAll('.player-picker').forEach(input => {
+            input.addEventListener('focus', () => {
+                if (omitirProximaAperturaSugerencias) {
+                    omitirProximaAperturaSugerencias = false;
+                    return;
+                }
+                mostrarSugerenciasJugadores(input, false);
+            });
+            input.addEventListener('click', () => mostrarSugerenciasJugadores(input, false));
+            input.addEventListener('input', () => mostrarSugerenciasJugadores(input, true));
+            input.addEventListener('keydown', event => {
+                if (event.key === 'ArrowDown') {
+                    const primeraOpcion = document.querySelector('#jugadores-dropdown .players-dropdown-option');
+                    if (primeraOpcion) {
+                        event.preventDefault();
+                        primeraOpcion.focus();
+                    }
+                }
+                if (event.key === 'Escape') {
+                    event.stopPropagation();
+                    ocultarSugerenciasJugadores();
+                }
+            });
+        });
+
+        document.addEventListener('pointerdown', event => {
+            const dropdown = document.getElementById('jugadores-dropdown');
+            if (dropdown?.contains(event.target) || event.target.closest?.('.player-picker')) return;
+            ocultarSugerenciasJugadores();
+        });
+        window.addEventListener('resize', ocultarSugerenciasJugadores);
+        window.addEventListener('scroll', event => {
+            const dropdown = document.getElementById('jugadores-dropdown');
+            if (dropdown?.contains(event.target)) return;
+            ocultarSugerenciasJugadores();
+        }, true);
+    }
+
+    function reiniciarFormularioGestorJugadores() {
+        indiceJugadorEditando = null;
+        const input = document.getElementById('gestor-jugador-input');
+        const guardar = document.getElementById('btn-guardar-jugador');
+        const cancelar = document.getElementById('btn-cancelar-edicion-jugador');
+        if (input) input.value = '';
+        if (guardar) guardar.textContent = 'Agregar';
+        cancelar?.classList.add('hidden');
+    }
+
+    function renderizarGestorJugadores() {
+        const lista = document.getElementById('gestor-jugadores-lista');
+        if (!lista) return;
+
+        const jugadores = obtenerJugadoresGuardados();
+        lista.innerHTML = '';
+        if (jugadores.length === 0) {
+            const vacio = document.createElement('div');
+            vacio.className = 'player-manager-empty';
+            vacio.textContent = 'Todavía no hay jugadores guardados.';
+            lista.appendChild(vacio);
+            return;
+        }
+
+        jugadores.forEach((nombre, indice) => {
+            const fila = document.createElement('div');
+            fila.className = 'player-manager-row';
+
+            const texto = document.createElement('div');
+            texto.className = 'player-manager-name';
+            texto.textContent = nombre;
+
+            const acciones = document.createElement('div');
+            acciones.className = 'player-manager-actions';
+
+            const editar = document.createElement('button');
+            editar.type = 'button';
+            editar.className = 'player-manager-action edit';
+            editar.textContent = '✏️ Editar';
+            editar.addEventListener('click', () => editarJugadorGuardado(indice));
+
+            const borrar = document.createElement('button');
+            borrar.type = 'button';
+            borrar.className = 'player-manager-action delete';
+            borrar.textContent = '🗑️ Borrar';
+            borrar.addEventListener('click', () => borrarJugadorGuardado(indice));
+
+            acciones.append(editar, borrar);
+            fila.append(texto, acciones);
+            lista.appendChild(fila);
+        });
+    }
+
+    function actualizarGestorJugadoresVisible(visible) {
+        const modal = document.getElementById('gestor-jugadores-modal');
+        if (!modal) return;
+
+        modal.classList.toggle('hidden', !visible);
+        ocultarSugerenciasJugadores();
+        actualizarBloqueoModales();
+
+        if (visible) {
+            reiniciarFormularioGestorJugadores();
+            renderizarGestorJugadores();
+            window.requestAnimationFrame(() => document.getElementById('gestor-jugador-input')?.focus());
+        } else {
+            reiniciarFormularioGestorJugadores();
+            document.getElementById('btn-open-players-manager')?.focus();
+        }
+    }
+
+    function toggleGestorJugadores() {
+        const modal = document.getElementById('gestor-jugadores-modal');
+        if (!modal) return;
+        actualizarGestorJugadoresVisible(modal.classList.contains('hidden'));
+    }
+
+    function cerrarGestorJugadores() {
+        actualizarGestorJugadoresVisible(false);
+    }
+
+    function guardarJugadorDesdeGestor(event) {
+        event.preventDefault();
+        const input = document.getElementById('gestor-jugador-input');
+        const nombre = input.value.trim();
+        if (!nombre) {
+            alert('Escribe el nombre del jugador.');
+            input.focus();
+            return;
+        }
+
+        const jugadores = obtenerJugadoresGuardados();
+        const duplicado = jugadores.findIndex((guardado, indice) =>
+            indice !== indiceJugadorEditando && guardado.toLocaleLowerCase() === nombre.toLocaleLowerCase()
+        );
+        if (duplicado !== -1) {
+            alert('Ese jugador ya está guardado.');
+            input.focus();
+            return;
+        }
+
+        if (Number.isInteger(indiceJugadorEditando) && jugadores[indiceJugadorEditando]) {
+            const nombreAnterior = jugadores[indiceJugadorEditando];
+            jugadores[indiceJugadorEditando] = nombre;
+            document.querySelectorAll('.player-picker').forEach(campo => {
+                if (campo.value.trim().toLocaleLowerCase() === nombreAnterior.toLocaleLowerCase()) {
+                    campo.value = nombre;
+                }
+            });
+        } else {
+            jugadores.push(nombre);
+        }
+
+        if (guardarListaJugadores(jugadores)) {
+            reiniciarFormularioGestorJugadores();
+            input.focus();
+        }
+    }
+
+    function editarJugadorGuardado(indice) {
+        const jugadores = obtenerJugadoresGuardados();
+        if (!jugadores[indice]) return;
+
+        indiceJugadorEditando = indice;
+        const input = document.getElementById('gestor-jugador-input');
+        input.value = jugadores[indice];
+        document.getElementById('btn-guardar-jugador').textContent = 'Guardar cambio';
+        document.getElementById('btn-cancelar-edicion-jugador').classList.remove('hidden');
+        input.focus();
+        input.select();
+    }
+
+    function cancelarEdicionJugador() {
+        reiniciarFormularioGestorJugadores();
+        document.getElementById('gestor-jugador-input')?.focus();
+    }
+
+    function borrarJugadorGuardado(indice) {
+        const jugadores = obtenerJugadoresGuardados();
+        const nombre = jugadores[indice];
+        if (!nombre) return;
+        if (!confirm(`¿Deseas borrar a “${nombre}” de los jugadores guardados?`)) return;
+
+        jugadores.splice(indice, 1);
+        guardarListaJugadores(jugadores);
+        reiniciarFormularioGestorJugadores();
+    }
+
+    function actualizarBloqueoModales() {
+        const hayModalAbierto = Array.from(document.querySelectorAll('.config-modal'))
+            .some(modal => !modal.classList.contains('hidden'));
+        document.body.classList.toggle('modal-abierto', hayModalAbierto);
+    }
+
+    function actualizarConfiguracionVisible(visible) {
+        const modal = document.getElementById('configuracion-modal');
+        const boton = document.getElementById('btn-open-config');
+        if (!modal) return;
+
+        modal.classList.toggle('hidden', !visible);
+        actualizarBloqueoModales();
+        if (boton) boton.setAttribute('aria-expanded', String(visible));
+
+        if (visible) {
+            cargarInputsConfig();
+            window.requestAnimationFrame(() => document.getElementById('cfg-j1')?.focus());
+        } else {
+            ocultarSugerenciasJugadores();
+            boton?.focus();
+        }
+    }
+
+    function toggleConfiguracion() {
+        const modal = document.getElementById('configuracion-modal');
+        if (!modal) return;
+        actualizarConfiguracionVisible(modal.classList.contains('hidden'));
+    }
+
+    function escaparHTML(valor) {
+        const nodo = document.createElement('span');
+        nodo.textContent = String(valor ?? '');
+        return nodo.innerHTML;
+    }
+
+    function obtenerFechaPartida(partida) {
+        const valorFecha = partida?.fecha || partida?.fechaRegistro || partida?.created_at;
+        if (!valorFecha) {
+            return { fecha: 'Fecha no disponible', hora: '', timestamp: 0 };
+        }
+
+        const fecha = new Date(valorFecha);
+        if (Number.isNaN(fecha.getTime())) {
+            return { fecha: 'Fecha no disponible', hora: '', timestamp: 0 };
+        }
+
+        return {
+            fecha: fecha.toLocaleDateString('es-DO'),
+            hora: fecha.toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit' }),
+            timestamp: fecha.getTime()
+        };
+    }
+
+    function crearVistaPartida(partida, indiceOriginal) {
+        const nombres = partida?.nombres || {};
+        const pareja1 = `${nombres.j1 || 'Jugador 1'} & ${nombres.j3 || 'Jugador 3'}`;
+        const pareja2 = `${nombres.j2 || 'Jugador 2'} & ${nombres.j4 || 'Jugador 4'}`;
+        const score1 = Math.max(0, Number(partida?.score1) || 0);
+        const score2 = Math.max(0, Number(partida?.score2) || 0);
+        const meta = Number(partida?.meta) > 0 ? Number(partida.meta) : 200;
+        const ganador = score1 > score2 ? 1 : score2 > score1 ? 2 : 0;
+        const esLisa = score1 === 0 || score2 === 0;
+        const fecha = obtenerFechaPartida(partida);
+
+        return { partida, indiceOriginal, pareja1, pareja2, score1, score2, meta, ganador, esLisa, ...fecha };
+    }
+
+    function renderizarHistorialPartidas() {
+        const contenedor = document.getElementById('historial-partidas-contenido');
+        const listaMovil = document.getElementById('historial-partidas-movil');
+        const resumen = document.getElementById('historial-partidas-resumen');
+        if (!contenedor || !listaMovil || !resumen) return;
+
+        const partidas = Array.isArray(juegoLocal.historialPartidas)
+            ? juegoLocal.historialPartidas
+                .map((partida, indiceOriginal) => crearVistaPartida(partida, indiceOriginal))
+                .sort((a, b) => b.timestamp - a.timestamp || b.indiceOriginal - a.indiceOriginal)
+            : [];
+
+        resumen.textContent = partidas.length === 1
+            ? '1 partida registrada · puedes editar sus datos.'
+            : `${partidas.length} partidas registradas · puedes editar sus datos.`;
+
+        if (partidas.length === 0) {
+            const vacio = '<div class="match-history-empty">Aún no hay partidas registradas en el historial.</div>';
+            contenedor.innerHTML = vacio;
+            listaMovil.innerHTML = vacio;
+            return;
+        }
+
+        const filas = partidas.map(item => {
+            const ganadorTexto = item.ganador === 1 ? 'Pareja 1' : item.ganador === 2 ? 'Pareja 2' : 'Empate';
+            const ganadorClase = item.ganador === 1 ? 'p1' : item.ganador === 2 ? 'p2' : 'tie';
+            const lisa = item.esLisa
+                ? '<span class="history-lisa-badge">Sí</span>'
+                : '<span class="history-regular-label">No</span>';
+
+            return `
+                <tr>
+                    <td>${escaparHTML(item.fecha)}</td>
+                    <td style="color: var(--text-muted); white-space: nowrap;">${escaparHTML(item.hora)}</td>
+                    <td><span class="history-meta-badge">${item.meta}</span></td>
+                    <td class="history-team p1-color">${escaparHTML(item.pareja1)}</td>
+                    <td class="history-score ${item.ganador === 1 ? 'winner' : ''}">${item.score1}</td>
+                    <td class="history-team p2-color">${escaparHTML(item.pareja2)}</td>
+                    <td class="history-score ${item.ganador === 2 ? 'winner' : ''}">${item.score2}</td>
+                    <td><span class="history-winner-badge ${ganadorClase}">${ganadorTexto}</span></td>
+                    <td style="text-align: center;">${lisa}</td>
+                    <td><button class="btn-edit-match" type="button" data-edit-index="${item.indiceOriginal}" onclick="abrirEditarPartida(${item.indiceOriginal})">✏️ Editar</button></td>
+                </tr>
+            `;
+        }).join('');
+
+        const tarjetas = partidas.map(item => {
+            const ganadorTexto = item.ganador === 1 ? 'Pareja 1' : item.ganador === 2 ? 'Pareja 2' : 'Empate';
+            const ganadorClase = item.ganador === 1 ? 'p1' : item.ganador === 2 ? 'p2' : 'tie';
+            const estadoPartida = item.esLisa
+                ? '<span class="history-lisa-badge">Lisa</span>'
+                : '<span class="history-regular-label">Partida regular</span>';
+
+            return `
+                <article class="local-match-card">
+                    <div class="local-match-top">
+                        <div class="local-match-date">
+                            ${escaparHTML(item.fecha)}
+                            <span class="local-match-time">${escaparHTML(item.hora)}</span>
+                        </div>
+                        <span class="history-meta-badge">Meta ${item.meta}</span>
+                    </div>
+
+                    <div class="local-match-scoreboard">
+                        <div class="local-match-team p1-color">${escaparHTML(item.pareja1)}</div>
+                        <div class="local-match-score ${item.ganador === 1 ? 'winner' : ''}">${item.score1}</div>
+                        <div class="local-match-team p2-color">${escaparHTML(item.pareja2)}</div>
+                        <div class="local-match-score ${item.ganador === 2 ? 'winner' : ''}">${item.score2}</div>
+                    </div>
+
+                    <div class="local-match-footer">
+                        <span class="history-winner-badge ${ganadorClase}">${ganadorTexto}</span>
+                        ${estadoPartida}
+                        <button class="btn-edit-match" type="button" data-edit-index="${item.indiceOriginal}" onclick="abrirEditarPartida(${item.indiceOriginal})">✏️ Editar</button>
+                    </div>
+                </article>
+            `;
+        }).join('');
+
+        contenedor.innerHTML = `
+            <table class="local-history-table">
+                <thead>
+                    <tr>
+                        <th>Fecha</th>
+                        <th>Hora</th>
+                        <th>Meta</th>
+                        <th>Pareja 1</th>
+                        <th style="text-align: center;">Pts 1</th>
+                        <th>Pareja 2</th>
+                        <th style="text-align: center;">Pts 2</th>
+                        <th>Ganador</th>
+                        <th style="text-align: center;">¿Lisa?</th>
+                        <th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>${filas}</tbody>
+            </table>
+        `;
+        listaMovil.innerHTML = tarjetas;
+    }
+
+    function actualizarHistorialPartidasVisible(visible) {
+        const modal = document.getElementById('historial-partidas-modal');
+        const boton = document.getElementById('btn-open-history');
+        if (!modal) return;
+
+        modal.classList.toggle('hidden', !visible);
+        actualizarBloqueoModales();
+        if (boton) boton.setAttribute('aria-expanded', String(visible));
+
+        if (visible) {
+            renderizarHistorialPartidas();
+            window.requestAnimationFrame(() => document.getElementById('btn-history-close')?.focus());
+        } else {
+            boton?.focus();
+        }
+    }
+
+    function toggleHistorialPartidas() {
+        const modal = document.getElementById('historial-partidas-modal');
+        if (!modal) return;
+        actualizarHistorialPartidasVisible(modal.classList.contains('hidden'));
+    }
+
+    function convertirFechaAInput(partida) {
+        const valorFecha = partida?.fecha || partida?.fechaRegistro || partida?.created_at;
+        let fecha = valorFecha ? new Date(valorFecha) : new Date();
+        if (Number.isNaN(fecha.getTime())) fecha = new Date();
+
+        const fechaLocal = new Date(fecha.getTime() - fecha.getTimezoneOffset() * 60000);
+        return fechaLocal.toISOString().slice(0, 16);
+    }
+
+    function actualizarEditarPartidaVisible(visible) {
+        const modal = document.getElementById('editar-partida-modal');
+        if (!modal) return;
+
+        const indiceAnterior = indicePartidaEditando;
+        modal.classList.toggle('hidden', !visible);
+        actualizarBloqueoModales();
+
+        if (visible) {
+            window.requestAnimationFrame(() => document.getElementById('edit-fecha')?.focus());
+        } else {
+            indicePartidaEditando = null;
+            if (Number.isInteger(indiceAnterior)) {
+                window.requestAnimationFrame(() => document.querySelector(`[data-edit-index="${indiceAnterior}"]`)?.focus());
+            }
+        }
+    }
+
+    function abrirEditarPartida(indice) {
+        const partida = juegoLocal.historialPartidas?.[indice];
+        if (!partida) {
+            alert('No se encontró la partida que deseas editar.');
+            return;
+        }
+
+        const nombres = partida.nombres || {};
+        indicePartidaEditando = indice;
+        document.getElementById('edit-fecha').value = convertirFechaAInput(partida);
+        document.getElementById('edit-meta').value = Number(partida.meta) > 0 ? Number(partida.meta) : 200;
+        document.getElementById('edit-j1').value = nombres.j1 || 'Jugador 1';
+        document.getElementById('edit-j3').value = nombres.j3 || 'Jugador 3';
+        document.getElementById('edit-j2').value = nombres.j2 || 'Jugador 2';
+        document.getElementById('edit-j4').value = nombres.j4 || 'Jugador 4';
+        document.getElementById('edit-score1').value = Math.max(0, Number(partida.score1) || 0);
+        document.getElementById('edit-score2').value = Math.max(0, Number(partida.score2) || 0);
+        actualizarEditarPartidaVisible(true);
+    }
+
+    function cerrarEditarPartida() {
+        actualizarEditarPartidaVisible(false);
+    }
+
+    function guardarEdicionPartida(event) {
+        event.preventDefault();
+        const partida = juegoLocal.historialPartidas?.[indicePartidaEditando];
+        if (!partida) {
+            alert('No se encontró la partida que deseas guardar.');
+            cerrarEditarPartida();
+            return;
+        }
+
+        const meta = Number.parseInt(document.getElementById('edit-meta').value, 10);
+        const score1 = Number.parseInt(document.getElementById('edit-score1').value, 10);
+        const score2 = Number.parseInt(document.getElementById('edit-score2').value, 10);
+        const fechaValor = document.getElementById('edit-fecha').value;
+        const fecha = new Date(fechaValor);
+
+        if (!Number.isFinite(meta) || meta <= 0) {
+            alert('La meta debe ser mayor que cero.');
+            return;
+        }
+        if (!Number.isFinite(score1) || !Number.isFinite(score2) || score1 < 0 || score2 < 0) {
+            alert('Los puntos deben ser números iguales o mayores que cero.');
+            return;
+        }
+        if (score1 === score2) {
+            alert('Una partida registrada debe tener una pareja ganadora. Corrige el marcador.');
+            return;
+        }
+        if (Math.max(score1, score2) < meta) {
+            alert('La pareja ganadora debe alcanzar o superar la meta de puntos.');
+            return;
+        }
+        if (!fechaValor || Number.isNaN(fecha.getTime())) {
+            alert('Selecciona una fecha y hora válidas.');
+            return;
+        }
+
+        const nombres = {
+            j1: document.getElementById('edit-j1').value.trim() || 'Jugador 1',
+            j2: document.getElementById('edit-j2').value.trim() || 'Jugador 2',
+            j3: document.getElementById('edit-j3').value.trim() || 'Jugador 3',
+            j4: document.getElementById('edit-j4').value.trim() || 'Jugador 4'
+        };
+
+        juegoLocal.historialPartidas[indicePartidaEditando] = {
+            ...partida,
+            ganador: score1 > score2 ? 1 : 2,
+            score1,
+            score2,
+            meta,
+            fecha: fecha.toISOString(),
+            nombres
+        };
+
+        actualizarInterfaz();
+        cerrarEditarPartida();
+    }
+
+    function normalizarTema(tema) {
+        return ['light', 'dark', 'amoled'].includes(tema) ? tema : 'light';
+    }
+
+    function obtenerTemaActual() {
+        if (document.body.classList.contains('amoled-mode')) return 'amoled';
+        if (document.body.classList.contains('light-mode')) return 'light';
+        return 'dark';
+    }
+
+    function actualizarBotonTema(temaActual) {
+        const boton = document.getElementById('btn-theme-toggle');
+        const icono = document.getElementById('btn-theme-icon');
+        const etiqueta = document.getElementById('btn-theme-label');
+        if (!boton || !icono || !etiqueta) return;
+
+        const temas = {
+            light: { icono: '☀️', etiqueta: 'Claro', siguiente: 'oscuro' },
+            dark: { icono: '🌙', etiqueta: 'Oscuro', siguiente: 'negro AMOLED' },
+            amoled: { icono: '⚫', etiqueta: 'Negro', siguiente: 'claro' }
+        };
+        const tema = temas[normalizarTema(temaActual)];
+        icono.textContent = tema.icono;
+        etiqueta.textContent = tema.etiqueta;
+        boton.setAttribute('aria-label', `Cambiar a modo ${tema.siguiente}`);
+        boton.setAttribute('title', `Cambiar a modo ${tema.siguiente}`);
+    }
+
+    function aplicarTema(temaSolicitado, guardar = true) {
+        const tema = normalizarTema(temaSolicitado);
+        const esClaro = tema === 'light';
+        const esAmoled = tema === 'amoled';
+
+        [document.documentElement, document.body].forEach(elemento => {
+            elemento.classList.toggle('light-mode', esClaro);
+            elemento.classList.toggle('amoled-mode', esAmoled);
+        });
+        actualizarBotonTema(tema);
+
+        if (guardar) {
+            try {
+                localStorage.setItem('theme', tema);
+                localStorage.removeItem('domino_tema');
+            } catch (error) {
+                console.warn('No se pudo guardar el tema de la app.', error);
+            }
+        }
+    }
+
+    function reproducirAlertaLocal() {
+        try {
+            const AudioContexto = window.AudioContext || window.webkitAudioContext;
+            if (!AudioContexto) return;
+            contextoAudioAlerta ||= new AudioContexto();
+            const contexto = contextoAudioAlerta;
+            if (contexto.state === 'suspended') contexto.resume().catch(() => {});
+
+            [392, 523.25, 659.25].forEach((frecuencia, indice) => {
+                const inicio = contexto.currentTime + indice * 0.12;
+                const oscilador = contexto.createOscillator();
+                const ganancia = contexto.createGain();
+                oscilador.type = 'sine';
+                oscilador.frequency.value = frecuencia;
+                ganancia.gain.setValueAtTime(0.0001, inicio);
+                ganancia.gain.exponentialRampToValueAtTime(0.16, inicio + 0.02);
+                ganancia.gain.exponentialRampToValueAtTime(0.0001, inicio + 0.22);
+                oscilador.connect(ganancia);
+                ganancia.connect(contexto.destination);
+                oscilador.start(inicio);
+                oscilador.stop(inicio + 0.24);
+            });
+        } catch (error) {
+            console.warn('No se pudo reproducir la alerta sonora local.', error);
+        }
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+        let temaGuardado = 'light';
+        try {
+            temaGuardado = localStorage.getItem('theme') || localStorage.getItem('domino_tema') || 'light';
+        } catch (error) {
+            console.warn('No se pudo leer el tema guardado.', error);
+        }
+        aplicarTema(temaGuardado);
+
+        cargarInputsConfig();
+        inicializarSelectoresJugadores();
+        renderizarGestorJugadores();
+        actualizarConfiguracionVisible(false);
+        actualizarEditarPartidaVisible(false);
+        actualizarInterfaz();
+
+    });
+
+    document.addEventListener('keydown', event => {
+        if (event.key !== 'Escape') return;
+
+        const dropdownJugadores = document.getElementById('jugadores-dropdown');
+        if (dropdownJugadores && !dropdownJugadores.classList.contains('hidden')) {
+            ocultarSugerenciasJugadores();
+            campoJugadorActivo?.focus();
+            return;
+        }
+
+        const gestorJugadoresModal = document.getElementById('gestor-jugadores-modal');
+        if (gestorJugadoresModal && !gestorJugadoresModal.classList.contains('hidden')) {
+            cerrarGestorJugadores();
+            return;
+        }
+
+        const editarModal = document.getElementById('editar-partida-modal');
+        if (editarModal && !editarModal.classList.contains('hidden')) {
+            cerrarEditarPartida();
+            return;
+        }
+
+        const historialModal = document.getElementById('historial-partidas-modal');
+        if (historialModal && !historialModal.classList.contains('hidden')) {
+            actualizarHistorialPartidasVisible(false);
+            return;
+        }
+
+        const configuracionModal = document.getElementById('configuracion-modal');
+        if (configuracionModal && !configuracionModal.classList.contains('hidden')) {
+            actualizarConfiguracionVisible(false);
+        }
+    });
+
+    function toggleTema() {
+        const ordenTemas = ['light', 'dark', 'amoled'];
+        const temaActual = obtenerTemaActual();
+        const siguienteTema = ordenTemas[(ordenTemas.indexOf(temaActual) + 1) % ordenTemas.length];
+        aplicarTema(siguienteTema);
+    }
+
+    function cargarInputsConfig() {
+        document.getElementById('cfg-j1').value = juegoLocal.j1;
+        document.getElementById('cfg-j2').value = juegoLocal.j2;
+        document.getElementById('cfg-j3').value = juegoLocal.j3;
+        document.getElementById('cfg-j4').value = juegoLocal.j4;
+        document.getElementById('cfg-meta').value = juegoLocal.meta;
+    }
+
+    function actualizarInterfaz() {
+        document.getElementById('meta-text').innerText = `🏆 Meta: ${juegoLocal.meta} pts`;
+
+        const textoP1 = `${juegoLocal.j1} / ${juegoLocal.j3}`;
+        const textoP2 = `${juegoLocal.j2} / ${juegoLocal.j4}`;
+
+        document.getElementById('p1-nombres').innerText = textoP1;
+        document.getElementById('p2-nombres').innerText = textoP2;
+
+        document.getElementById('input-p1').placeholder = `Pts de ${juegoLocal.j1} y ${juegoLocal.j3}`;
+        document.getElementById('input-p2').placeholder = `Pts de ${juegoLocal.j2} y ${juegoLocal.j4}`;
+
+        let scoreP1 = 0;
+        let scoreP2 = 0;
+
+        juegoLocal.manosActuales.forEach(m => {
+            if (!m.anulada) {
+                scoreP1 += m.p1;
+                scoreP2 += m.p2;
+            }
+        });
+
+        document.getElementById('p1-score').innerText = scoreP1;
+        document.getElementById('p2-score').innerText = scoreP2;
+
+        renderizarHistorialManos();
+
+        const winnerBox = document.getElementById('winner-box');
+        const cardFinalizar = document.getElementById('card-finalizar-partida');
+        const statusBadge = document.getElementById('status-badge');
+        
+        const btnAnotar = document.getElementById('btn-anotar');
+        const inputP1 = document.getElementById('input-p1');
+        const inputP2 = document.getElementById('input-p2');
+
+        const pareja1AlcanzoMeta = scoreP1 >= juegoLocal.meta;
+        const pareja2AlcanzoMeta = scoreP2 >= juegoLocal.meta;
+        const finalizado = pareja1AlcanzoMeta || pareja2AlcanzoMeta;
+
+        if (finalizado) {
+            const ganador = pareja1AlcanzoMeta && pareja2AlcanzoMeta
+                ? (scoreP1 === scoreP2 ? 0 : (scoreP1 > scoreP2 ? 1 : 2))
+                : (pareja1AlcanzoMeta ? 1 : 2);
+            const ganadorTexto = ganador === 1
+                ? `🏆 ¡La Pareja 1 (${textoP1}) ganó la partida con ${scoreP1} pts!`
+                : ganador === 2
+                    ? `🏆 ¡La Pareja 2 (${textoP2}) ganó la partida con ${scoreP2} pts!`
+                    : '⚠️ Ambas parejas alcanzaron la meta con el mismo puntaje. Revisa la última anotación.';
+            winnerBox.innerText = ganadorTexto;
+            winnerBox.classList.remove('hidden');
+            cardFinalizar.classList.remove('hidden');
+            statusBadge.innerText = '• PARTIDA FINALIZADA';
+            statusBadge.style.color = '#ef4444';
+
+            btnAnotar.disabled = true;
+            inputP1.disabled = true;
+            inputP2.disabled = true;
+
+            if (!juegoLocal.lisaMostrada) {
+                if (pareja1AlcanzoMeta && scoreP2 === 0) {
+                    dispararAlertaLisa(`${textoP2} (Pareja 2)`);
+                    juegoLocal.lisaMostrada = true;
+                } else if (pareja2AlcanzoMeta && scoreP1 === 0) {
+                    dispararAlertaLisa(`${textoP1} (Pareja 1)`);
+                    juegoLocal.lisaMostrada = true;
+                }
+            }
+        } else {
+            winnerBox.classList.add('hidden');
+            cardFinalizar.classList.add('hidden');
+            statusBadge.innerText = '• EN JUEGO';
+            statusBadge.style.color = '#22c55e';
+            juegoLocal.lisaMostrada = false;
+
+            btnAnotar.disabled = false;
+            inputP1.disabled = false;
+            inputP2.disabled = false;
+        }
+
+        renderizarEstadisticasJugadores();
+        const historialModal = document.getElementById('historial-partidas-modal');
+        if (historialModal && !historialModal.classList.contains('hidden')) {
+            renderizarHistorialPartidas();
+        }
+        guardarEstadoLocal();
+    }
+
+    function renderizarHistorialManos() {
+        const tbody = document.getElementById('lista-manos-actuales');
+        tbody.innerHTML = '';
+
+        if (juegoLocal.manosActuales.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="4" style="color: var(--text-muted); text-align: center; padding: 16px;">No hay manos anotadas en esta partida.</td></tr>`;
+            return;
+        }
+
+        juegoLocal.manosActuales.forEach((m, index) => {
+            let claseAnulada = m.anulada ? 'anulada' : '';
+            let botonAccion = m.anulada 
+                ? `<span style="font-size: 0.75rem; color: #f87171; font-weight: bold;">Anulada</span>` 
+                : `<button class="btn-tabla-anular" onclick="anularMano(${index})" title="Anular mano">🚫</button>`;
+
+            tbody.innerHTML += `
+                <tr class="${claseAnulada}">
+                    <td style="font-weight: bold; color: var(--text-muted);">#${index + 1}</td>
+                    <td style="font-weight: bold; color: var(--pareja1);">${m.p1} pts</td>
+                    <td style="font-weight: bold; color: var(--pareja2);">${m.p2} pts</td>
+                    <td style="text-align: center;">${botonAccion}</td>
+                </tr>
+            `;
+        });
+    }
+
+    function anularMano(index) {
+        if (confirm(`¿Deseas anular los puntos de la mano ${index + 1}? Esta acción no se puede deshacer.`)) {
+            juegoLocal.manosActuales[index].anulada = true;
+            actualizarInterfaz();
+        }
+    }
+
+    function guardarMano(e) {
+        e.preventDefault();
+
+        let scoreP1 = juegoLocal.manosActuales.reduce((acc, m) => acc + (m.anulada ? 0 : m.p1), 0);
+        let scoreP2 = juegoLocal.manosActuales.reduce((acc, m) => acc + (m.anulada ? 0 : m.p2), 0);
+
+        if (scoreP1 >= juegoLocal.meta || scoreP2 >= juegoLocal.meta) {
+            alert('La partida ya ha finalizado. Registra la partida para iniciar una nueva.');
+            return;
+        }
+
+        const p1Input = document.getElementById('input-p1');
+        const p2Input = document.getElementById('input-p2');
+
+        const valP1 = parseInt(p1Input.value) || 0;
+        const valP2 = parseInt(p2Input.value) || 0;
+
+        if (valP1 === 0 && valP2 === 0) {
+            alert('Ingresa los puntos de una pareja.');
+            return;
+        }
+
+        if (valP1 < 0 || valP2 < 0) {
+            alert('Los puntos no pueden ser negativos.');
+            return;
+        }
+
+        if (valP1 > 0 && valP2 > 0) {
+            alert('Anota los puntos de una sola pareja por mano.');
+            return;
+        }
+
+        juegoLocal.manosActuales.push({ p1: valP1, p2: valP2, anulada: false });
+
+        p1Input.value = '';
+        p2Input.value = '';
+        actualizarInterfaz();
+    }
+
+    function registrarPartidaTerminada() {
+        let scoreP1 = juegoLocal.manosActuales.reduce((acc, m) => acc + (m.anulada ? 0 : m.p1), 0);
+        let scoreP2 = juegoLocal.manosActuales.reduce((acc, m) => acc + (m.anulada ? 0 : m.p2), 0);
+
+        if (scoreP1 >= juegoLocal.meta && scoreP2 >= juegoLocal.meta && scoreP1 === scoreP2) {
+            alert('No se puede registrar una partida empatada. Revisa la última anotación.');
+            return;
+        }
+
+        let ganador = scoreP1 > scoreP2 ? 1 : 2;
+
+        juegoLocal.historialPartidas.push({
+            ganador: ganador,
+            score1: scoreP1,
+            score2: scoreP2,
+            meta: juegoLocal.meta,
+            fecha: new Date().toISOString(),
+            nombres: { j1: juegoLocal.j1, j2: juegoLocal.j2, j3: juegoLocal.j3, j4: juegoLocal.j4 }
+        });
+
+        juegoLocal.manosActuales = [];
+        juegoLocal.lisaMostrada = false;
+        
+        actualizarInterfaz();
+    }
+
+    function renderizarEstadisticasJugadores() {
+        const tbody = document.getElementById('lista-jugadores-stats');
+        tbody.innerHTML = '';
+
+        let stats = {};
+
+        function registrarJugador(nombre, esGanada) {
+            if (!nombre || nombre.trim() === '') return;
+            let original = nombre.trim();
+            let key = original.toLowerCase();
+
+            if (!stats[key]) {
+                stats[key] = { displayName: original, ganadas: 0, perdidas: 0 };
+            }
+            if (esGanada === true) stats[key].ganadas++;
+            if (esGanada === false) stats[key].perdidas++;
+        }
+
+        function asegurarJugador(nombre) {
+            if (!nombre || nombre.trim() === '') return;
+            let original = nombre.trim();
+            let key = original.toLowerCase();
+            if (!stats[key]) {
+                stats[key] = { displayName: original, ganadas: 0, perdidas: 0 };
+            }
+        }
+
+        juegoLocal.historialPartidas.forEach(partida => {
+            let n = partida.nombres;
+            let g1 = Number(partida.ganador) === 1;
+
+            if (n.j1) registrarJugador(n.j1, g1);
+            if (n.j3) registrarJugador(n.j3, g1);
+            if (n.j2) registrarJugador(n.j2, !g1);
+            if (n.j4) registrarJugador(n.j4, !g1);
+        });
+
+        asegurarJugador(juegoLocal.j1);
+        asegurarJugador(juegoLocal.j2);
+        asegurarJugador(juegoLocal.j3);
+        asegurarJugador(juegoLocal.j4);
+
+        const jugadoresArray = Object.keys(stats).map(key => ({
+            nombre: stats[key].displayName,
+            ganadas: stats[key].ganadas,
+            perdidas: stats[key].perdidas,
+            total: stats[key].ganadas + stats[key].perdidas
+        }));
+
+        jugadoresArray.sort((a, b) => {
+            let efA = a.total > 0 ? (a.ganadas / a.total) : 0;
+            let efB = b.total > 0 ? (b.ganadas / b.total) : 0;
+            if (efB !== efA) {
+                return efB - efA;
+            }
+            return b.ganadas - a.ganadas;
+        });
+
+        if (juegoLocal.historialPartidas.length === 0 && jugadoresArray.every(j => j.total === 0)) {
+            tbody.innerHTML = `<tr><td colspan="5" style="color: var(--text-muted); text-align: center; padding: 24px;">Sin partidas registradas aún.</td></tr>`;
+        } else {
+            jugadoresArray.forEach(j => {
+                let porcentaje = j.total > 0 ? (j.ganadas / j.total) * 100 : 0;
+                let porcentajeStr = porcentaje.toFixed(1) + '%';
+
+                tbody.innerHTML += `
+                    <tr>
+                        <td>
+                            <div style="font-weight: 700; color: var(--text);">${j.nombre}</div>
+                        </td>
+                        <td style="text-align: center; font-weight: bold; color: #10b981;">${j.ganadas}</td>
+                        <td style="text-align: center; font-weight: bold; color: #f87171;">${j.perdidas}</td>
+                        <td style="text-align: center; font-weight: 600; color: var(--text);">${j.total}</td>
+                        <td style="text-align: right;">
+                            <div class="eficiencia-cell-container">
+                                <div class="progress-bar-bg">
+                                    <div class="progress-bar-fill" style="width: ${porcentaje}%;"></div>
+                                </div>
+                                <span class="eficiencia-text">${porcentajeStr}</span>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            });
+        }
+    }
+
+    function dispararAlertaLisa(nombresPerdedores) {
+        if (window.AppNotifications?.emitir) {
+            window.AppNotifications.emitir({
+                key: `apunte-lisa:${Date.now()}`,
+                tipo: 'lisa',
+                titulo: '¡LISA!',
+                mensaje: `A ${nombresPerdedores} le dieron una lisa: terminaron con 0 puntos.`,
+                detalle: '¡Meeee! La chiva llegó al club. 🍼'
+            });
+            return;
+        }
+
+        const lisaBox = document.getElementById('lisa-box');
+        if (lisaBox) {
+            lisaBox.innerHTML = `🐐 ¡Meeeee! A <strong>${nombresPerdedores}</strong> le dieron una lisa (0 puntos al finalizar). ¡A tomar leche! 🍼😂`;
+            lisaBox.classList.remove('hidden');
+
+            reproducirAlertaLocal();
+
+            setTimeout(() => {
+                lisaBox.classList.add('hidden');
+                lisaBox.innerHTML = '';
+            }, 8000);
+        }
+    }
+
+    function guardarConfig() {
+        juegoLocal.j1 = document.getElementById('cfg-j1').value.trim() || 'Jugador 1';
+        juegoLocal.j2 = document.getElementById('cfg-j2').value.trim() || 'Jugador 2';
+        juegoLocal.j3 = document.getElementById('cfg-j3').value.trim() || 'Jugador 3';
+        juegoLocal.j4 = document.getElementById('cfg-j4').value.trim() || 'Jugador 4';
+        const metaIngresada = parseInt(document.getElementById('cfg-meta').value, 10);
+        juegoLocal.meta = Number.isFinite(metaIngresada) && metaIngresada > 0 ? metaIngresada : 200;
+        
+        actualizarInterfaz();
+    }
+
+    function reiniciarTodo() {
+        if (!confirm('¿Deseas reiniciar todo el historial de partidas y estadísticas?')) return;
+        juegoLocal.manosActuales = [];
+        juegoLocal.historialPartidas = [];
+        juegoLocal.lisaMostrada = false;
+        actualizarInterfaz();
+    }
+</script>
+</body>
+</html>

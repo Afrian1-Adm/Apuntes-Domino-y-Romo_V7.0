@@ -1,0 +1,535 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <link rel="icon" type="image/png" href="logo.png">
+    <meta name="theme-color" content="#f4f7fb">
+    <link rel="manifest" href="manifest.json">
+    <script src="offline-mode.js"></script>
+    <script src="vista-app.js"></script>
+    <title>Jugada aleatoria · Club Dominó y Romo</title>
+    <script>
+        (function () {
+            let tema = 'light';
+            try {
+                const guardado = localStorage.getItem('theme');
+                if (['light', 'dark', 'amoled'].includes(guardado)) tema = guardado;
+            } catch (e) {}
+            document.documentElement.classList.toggle('light-mode', tema === 'light');
+            document.documentElement.classList.toggle('amoled-mode', tema === 'amoled');
+        })();
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="app-notifications.js"></script>
+    <style>
+        :root {
+            --bg:#101827;--surface:#172236;--soft:#1d2a41;--elevated:#22314b;
+            --text:#f8fafc;--muted:#a8b5c8;--line:#33445f;--blue:#3b82f6;
+            --blue-soft:rgba(59,130,246,.13);--green:#22c55e;--green-soft:rgba(34,197,94,.12);
+            --red:#fb7185;--red-soft:rgba(251,113,133,.11);--amber:#fbbf24;
+            --amber-soft:rgba(251,191,36,.12);--violet:#a78bfa;--pair1:#38bdf8;
+            --pair2:#fb7185;--shadow:0 10px 28px rgba(0,0,0,.15);color-scheme:dark;
+        }
+        html.light-mode {
+            --bg:#f4f7fb;--surface:#fff;--soft:#f6f9fd;--elevated:#eef4fb;
+            --text:#111827;--muted:#66758c;--line:#d8e2ef;--blue:#1769e8;
+            --blue-soft:#eef5ff;--green:#159447;--green-soft:#effaf3;--red:#dc2626;
+            --red-soft:#fff3f4;--amber:#b77900;--amber-soft:#fff8e7;--violet:#7c3aed;
+            --pair1:#0284c7;--pair2:#dc2626;--shadow:0 8px 26px rgba(31,48,78,.07);color-scheme:light;
+        }
+        html.amoled-mode {
+            --bg:#000;--surface:#050505;--soft:#0d0d0d;--elevated:#111;
+            --text:#f8fafc;--muted:#a1a1aa;--line:#262626;--blue:#3b82f6;
+            --blue-soft:rgba(59,130,246,.12);--green:#22c55e;--green-soft:rgba(34,197,94,.10);
+            --red:#fb7185;--red-soft:rgba(251,113,133,.10);--amber:#fbbf24;
+            --amber-soft:rgba(251,191,36,.10);--violet:#a78bfa;--pair1:#38bdf8;
+            --pair2:#fb7185;--shadow:0 4px 18px rgba(0,0,0,.72);color-scheme:dark;
+        }
+        *{box-sizing:border-box}html,body{min-height:100%}
+        body{margin:0;padding:12px 9px 32px;background:radial-gradient(circle at 50% -160px,rgba(59,130,246,.1),transparent 470px),var(--bg);color:var(--text);font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+        html.amoled-mode body{background:#000}button,input,select{font:inherit}button{cursor:pointer}button:disabled{cursor:not-allowed;opacity:.48}.hidden{display:none!important}
+        .shell{width:min(100%,760px);margin:auto;display:grid;gap:14px}
+        .topbar{position:sticky;top:0;z-index:30;display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 0 10px;background:color-mix(in srgb,var(--bg) 94%,transparent);backdrop-filter:blur(9px)}
+        .top-actions{display:flex;align-items:center;gap:7px}.nav-btn,.theme-btn,.small-btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;min-height:42px;padding:9px 12px;border:1px solid var(--line);border-radius:12px;background:var(--surface);color:var(--text);box-shadow:var(--shadow);font-size:.78rem;font-weight:850;text-decoration:none}
+        .status-pill{display:inline-flex;align-items:center;min-height:32px;padding:5px 9px;border:1px solid color-mix(in srgb,var(--green) 32%,var(--line));border-radius:999px;background:var(--green-soft);color:var(--green);font-size:.66rem;font-weight:900;white-space:nowrap}
+        .status-pill.wait{border-color:color-mix(in srgb,var(--amber) 35%,var(--line));background:var(--amber-soft);color:var(--amber)}.status-pill.error{border-color:color-mix(in srgb,var(--red) 35%,var(--line));background:var(--red-soft);color:var(--red)}
+        .card{padding:17px;border:1px solid var(--line);border-radius:20px;background:var(--surface);box-shadow:var(--shadow)}
+        .hero{display:flex;align-items:center;gap:10px}.hero img{width:104px;height:104px;flex:0 0 104px;object-fit:contain}.hero h1{margin:0;font-size:clamp(1.45rem,5vw,2rem);letter-spacing:-.035em}.hero p{margin:5px 0 0;color:var(--muted);font-size:.79rem;line-height:1.45}
+        .hero-meta{display:flex;flex-wrap:wrap;gap:7px;margin-top:10px}.mini-pill{display:inline-flex;align-items:center;min-height:26px;padding:4px 8px;border:1px solid var(--line);border-radius:999px;background:var(--soft);color:var(--muted);font-size:.67rem;font-weight:800}
+        .notice{padding:13px 15px;border:1px solid color-mix(in srgb,var(--amber) 35%,var(--line));border-radius:15px;background:var(--amber-soft);font-size:.78rem;line-height:1.45}.notice.error{border-color:color-mix(in srgb,var(--red) 35%,var(--line));background:var(--red-soft)}
+        .section-head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:12px}.section-title{display:flex;align-items:center;gap:8px;margin:0;font-size:1rem;font-weight:950}.section-copy{margin:4px 0 0;color:var(--muted);font-size:.72rem;line-height:1.4}.count{display:inline-grid;min-width:27px;height:27px;padding:0 7px;place-items:center;border-radius:999px;background:var(--blue-soft);color:var(--blue);font-size:.7rem;font-weight:950}
+        .self-card{display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center;background:linear-gradient(135deg,var(--surface),color-mix(in srgb,var(--blue-soft) 45%,var(--surface)))}.self-name{font-weight:950}.self-state{margin-top:3px;color:var(--muted);font-size:.72rem}
+        .primary-btn,.secondary-btn,.success-btn,.danger-btn{min-height:44px;padding:9px 13px;border:1px solid transparent;border-radius:12px;font-size:.78rem;font-weight:950}.primary-btn{background:linear-gradient(135deg,#2563eb,#0ea5e9);color:#fff}.secondary-btn{border-color:var(--line);background:var(--soft);color:var(--text)}.success-btn{background:linear-gradient(135deg,#059669,#10b981);color:#fff}.danger-btn{border-color:color-mix(in srgb,var(--red) 30%,var(--line));background:var(--red-soft);color:var(--red)}
+        .tables-list{display:grid;gap:12px}.game-card{border-color:color-mix(in srgb,var(--green) 35%,var(--line));box-shadow:none}.game-card.mine{border-color:var(--blue);box-shadow:0 0 0 3px var(--blue-soft)}.game-top{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}.game-heading{display:flex;align-items:center;gap:7px;flex-wrap:wrap}.game-number{display:inline-flex;align-items:center;min-height:24px;padding:3px 8px;border-radius:999px;background:var(--blue-soft);color:var(--blue);font-size:.66rem;font-weight:950}.mine-pill{display:inline-flex;align-items:center;min-height:24px;padding:3px 8px;border-radius:999px;background:var(--green-soft);color:var(--green);font-size:.64rem;font-weight:900}.game-link{color:var(--blue);font-size:.72rem;font-weight:900;text-decoration:none}.score-grid{display:grid;grid-template-columns:1fr auto 1fr;gap:9px;align-items:stretch;margin-top:13px}.team{padding:13px 10px;border:1px solid var(--line);border-radius:15px;background:var(--soft);text-align:center}.team.one{border-color:color-mix(in srgb,var(--pair1) 38%,var(--line))}.team.two{border-color:color-mix(in srgb,var(--pair2) 38%,var(--line))}.team-label{font-size:.64rem;font-weight:950;letter-spacing:.06em;text-transform:uppercase}.one .team-label,.one .score{color:var(--pair1)}.two .team-label,.two .score{color:var(--pair2)}.team-names{min-height:28px;margin-top:4px;font-size:.79rem;font-weight:900;line-height:1.3}.score{margin-top:3px;font-size:2.2rem;font-weight:950}.vs{display:grid;place-items:center;color:var(--red);font-size:.7rem;font-weight:950}.mesa-card-vivo{padding:14px;display:flex;flex-direction:column;gap:12px}.mesa-live-header{display:flex;align-items:center;justify-content:space-between;gap:10px}.mesa-live-title{display:flex;align-items:center;gap:9px}.mesa-live-icon{font-size:1.25rem}.mesa-live-title strong{display:block;font-size:.88rem}.mesa-live-title span{display:block;margin-top:2px;color:var(--muted);font-size:.68rem}.marcador-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.equipo-score-box{padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--soft);text-align:center}.equipo-score-box.team-a{border-color:color-mix(in srgb,var(--pair1) 38%,var(--line))}.equipo-score-box.team-b{border-color:color-mix(in srgb,var(--pair2) 38%,var(--line))}.equipo-score-label{font-size:.64rem;font-weight:950;letter-spacing:.05em;text-transform:uppercase}.team-a .equipo-score-label,.score-a{color:var(--pair1)}.team-b .equipo-score-label,.score-b{color:var(--pair2)}.equipo-score-names{min-height:27px;margin-top:5px;font-size:.76rem;font-weight:900;line-height:1.3}.score-a,.score-b{margin-top:6px;font-size:2rem;font-weight:950;line-height:1}.rondas-pill{display:flex;flex-direction:column;align-items:center;min-width:47px;padding:5px 8px;border-radius:9px;background:var(--blue-soft);color:var(--blue)}.rondas-pill span{font-size:.59rem;font-weight:800}.rondas-pill strong{font-size:.82rem}.mesa-progress-label{display:flex;justify-content:space-between;color:var(--muted);font-size:.64rem}.progress-track{width:100%;height:8px;margin-top:4px;overflow:hidden;border:1px solid var(--line);border-radius:6px;background:var(--soft)}.progress-fill{height:100%;border-radius:6px;background:var(--green)}.card-corner-actions{display:flex;align-items:flex-start}.close-pending{width:30px;height:30px;display:grid;place-items:center;padding:0;border:1px solid color-mix(in srgb,var(--red) 35%,var(--line));border-radius:9px;background:var(--red-soft);color:var(--red);font-size:1rem;font-weight:900}
+        .winner{margin-top:12px;padding:11px;border:1px solid color-mix(in srgb,var(--green) 35%,var(--line));border-radius:13px;background:var(--green-soft);color:var(--green);font-size:.79rem;font-weight:900;text-align:center}.next-actions{display:grid;grid-template-columns:1fr;gap:8px;margin-top:10px}.next-actions .secondary-btn{display:none}.table-entry{display:flex;width:100%;min-height:46px;margin-top:11px;align-items:center;justify-content:center;border-radius:12px;background:linear-gradient(135deg,#2563eb,#0ea5e9);color:#fff;font-size:.8rem;font-weight:950;text-decoration:none}.pending-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:13px}.pending-team{padding:11px;border:1px solid var(--line);border-radius:14px;background:var(--soft)}.pending-team.one{border-color:color-mix(in srgb,var(--pair1) 38%,var(--line))}.pending-team.two{border-color:color-mix(in srgb,var(--pair2) 38%,var(--line))}.pending-team h4{margin:0 0 8px;font-size:.66rem;letter-spacing:.05em;text-transform:uppercase}.pending-team.one h4{color:var(--pair1)}.pending-team.two h4{color:var(--pair2)}.pending-player{display:flex;align-items:center;gap:7px;min-height:38px;padding:7px 8px;border:1px solid var(--line);border-radius:10px;background:var(--surface);font-size:.75rem;font-weight:850}.pending-player+.pending-player{margin-top:7px}.pending-player span{min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.remove-selected{width:27px;height:27px;display:grid;flex:0 0 27px;place-items:center;padding:0;border:1px solid color-mix(in srgb,var(--red) 30%,var(--line));border-radius:8px;background:var(--red-soft);color:var(--red);font-weight:950}.start-actions{display:grid;grid-template-columns:1fr auto;gap:8px;margin-top:11px}.penalty-box{margin-top:14px;padding-top:13px;border-top:1px solid var(--line)}.penalty-box h3{margin:0 0 9px;color:var(--amber);font-size:.8rem}
+        .queen-card{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:12px;border:1px solid color-mix(in srgb,var(--amber) 35%,var(--line));border-radius:14px;background:var(--amber-soft)}.queen-card strong{display:block;color:var(--amber)}.queen-card span{font-size:.72rem;color:var(--muted)}
+        .wait-list{display:grid;gap:7px}.wait-row{display:flex;align-items:center;gap:9px;padding:10px;border:1px solid var(--line);border-radius:13px;background:var(--soft)}.position{width:30px;height:30px;display:grid;flex:0 0 30px;place-items:center;border-radius:10px;background:var(--blue-soft);color:var(--blue);font-size:.72rem;font-weight:950}.person{min-width:0;flex:1}.person strong{display:block;overflow:hidden;font-size:.8rem;text-overflow:ellipsis;white-space:nowrap}.person small{display:block;margin-top:2px;color:var(--muted);font-size:.64rem}.priority{color:var(--amber);font-size:.66rem;font-weight:900;white-space:nowrap}.icon-btn{width:31px;height:31px;display:grid;place-items:center;padding:0;border:1px solid var(--line);border-radius:9px;background:var(--surface);color:var(--red)}.empty{padding:22px 12px;border:1px dashed var(--line);border-radius:14px;color:var(--muted);font-size:.76rem;line-height:1.45;text-align:center}
+        .admin-card{border-color:color-mix(in srgb,var(--violet) 35%,var(--line))}.admin-grid{display:grid;grid-template-columns:1fr 120px;gap:8px}.field label{display:block;margin-bottom:5px;color:var(--muted);font-size:.68rem;font-weight:800}.field input,.field select{width:100%;min-height:43px;padding:9px 10px;border:1px solid var(--line);border-radius:11px;background:var(--soft);color:var(--text);outline:none}.field input:focus,.field select:focus{border-color:var(--blue);box-shadow:0 0 0 3px var(--blue-soft)}.admin-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}.admin-actions button{flex:1 1 160px}.admin-add{display:grid;grid-template-columns:1fr auto;gap:8px;margin-top:13px;padding-top:13px;border-top:1px solid var(--line)}
+        .fair-note{display:flex;gap:9px;padding:12px;border:1px solid var(--line);border-radius:14px;background:var(--soft);color:var(--muted);font-size:.7rem;line-height:1.45}.fair-note strong{color:var(--text)}
+        .toast{position:fixed;left:50%;bottom:22px;z-index:90;width:min(calc(100% - 28px),520px);transform:translateX(-50%);padding:12px 15px;border:1px solid var(--line);border-radius:14px;background:color-mix(in srgb,var(--surface) 96%,transparent);box-shadow:0 14px 40px rgba(0,0,0,.25);color:var(--text);font-size:.78rem;font-weight:800;text-align:center;backdrop-filter:blur(10px)}
+        @media(max-width:560px){.hero img{width:88px;height:88px;flex-basis:88px}.self-card{grid-template-columns:1fr}.self-card button{width:100%}.score-grid,.pending-grid{grid-template-columns:1fr}.vs{min-height:18px}.next-actions,.start-actions,.admin-grid,.admin-add{grid-template-columns:1fr}.status-pill{display:none}}
+        @media(max-width:380px){.hero{align-items:flex-start}.hero img{width:76px;height:76px;flex-basis:76px}.card{padding:14px;border-radius:17px}.nav-btn,.theme-btn{padding:8px 10px}}
+        @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;transition-duration:.01ms!important;animation-duration:.01ms!important}}
+        .champion-btn{min-height:44px;padding:9px 13px;border:1px solid transparent;border-radius:12px;background:linear-gradient(135deg,#d97706,#f59e0b);color:#fff;font-size:.78rem;font-weight:950}.champion-note{margin-top:8px;color:var(--amber);font-size:.68rem;font-weight:800;text-align:center}
+    </style>
+
+    <!-- Ajuste exclusivo para iPhone/iPad: respeta notch, Dynamic Island y barra inferior
+         sin cambiar el diseño de Android ni escritorio. -->
+    <script id="ios-safe-area-fix">
+        (function () {
+            const esIOS =
+                /iPhone|iPad|iPod/i.test(navigator.userAgent) ||
+                (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
+            if (!esIOS) return;
+
+            document.documentElement.classList.add('ios-safe-area');
+
+            function aplicarSafeAreaIOS() {
+                const body = document.body;
+                if (!body) return;
+
+                if (body.dataset.iosSafeAreaCapturada !== '1') {
+                    body.dataset.iosPaddingTop = body.style.paddingTop || '';
+                    body.dataset.iosPaddingRight = body.style.paddingRight || '';
+                    body.dataset.iosPaddingBottom = body.style.paddingBottom || '';
+                    body.dataset.iosPaddingLeft = body.style.paddingLeft || '';
+                    body.dataset.iosSafeAreaCapturada = '1';
+                }
+
+                body.style.paddingTop = body.dataset.iosPaddingTop;
+                body.style.paddingRight = body.dataset.iosPaddingRight;
+                body.style.paddingBottom = body.dataset.iosPaddingBottom;
+                body.style.paddingLeft = body.dataset.iosPaddingLeft;
+
+                const estilos = getComputedStyle(body);
+
+                body.style.paddingTop =
+                    `calc(${estilos.paddingTop} + env(safe-area-inset-top, 0px))`;
+                body.style.paddingRight =
+                    `calc(${estilos.paddingRight} + env(safe-area-inset-right, 0px))`;
+                body.style.paddingBottom =
+                    `calc(${estilos.paddingBottom} + env(safe-area-inset-bottom, 0px))`;
+                body.style.paddingLeft =
+                    `calc(${estilos.paddingLeft} + env(safe-area-inset-left, 0px))`;
+            }
+
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', aplicarSafeAreaIOS, { once: true });
+            } else {
+                aplicarSafeAreaIOS();
+            }
+
+            window.addEventListener('orientationchange', function () {
+                window.setTimeout(aplicarSafeAreaIOS, 180);
+            });
+        })();
+    </script>
+
+</head>
+<body>
+<main class="shell">
+    <div class="topbar">
+        <a class="nav-btn" href="lobby.html">← Volver al lobby</a>
+        <div class="top-actions">
+            <button id="theme-toggle" class="theme-btn" type="button" onclick="cambiarTema()" aria-label="Cambiar a modo oscuro"><span class="theme-icon">☀️</span><span class="theme-label">Claro</span></button>
+            <span id="sync-status" class="status-pill wait">● Preparando</span>
+        </div>
+    </div>
+
+    <header class="card hero">
+        <img src="logo.png" alt="Club Dominó y Romo">
+        <div>
+            <h1>🎲 Jugada aleatoria</h1>
+            <p>Inscríbete, espera tu turno y sigue desde aquí la pareja ganadora y la próxima partida.</p>
+            <div class="hero-meta">
+                <span id="session-user" class="mini-pill">👤 Verificando sesión</span>
+                <span id="session-state" class="mini-pill">Sin jornada abierta</span>
+            </div>
+        </div>
+    </header>
+
+    <div id="module-notice" class="notice hidden" role="status"></div>
+
+    <section id="self-card" class="card self-card">
+        <div>
+            <div id="self-name" class="self-name">Tu inscripción</div>
+            <div id="self-state" class="self-state">Comprobando si estás inscrito…</div>
+        </div>
+        <button id="self-action" class="primary-btn" type="button" onclick="alternarMiInscripcion()" disabled>Inscribirme</button>
+    </section>
+
+    <section id="games-section" class="card hidden" aria-live="polite">
+        <div class="section-head">
+            <div><h2 class="section-title">🀄 Mesas de la jornada <span id="games-count" class="count">0</span></h2><p class="section-copy">Cada mesa lleva su marcador y rota su pareja ganadora de manera independiente.</p></div>
+        </div>
+        <div id="games-list" class="tables-list"></div>
+    </section>
+
+    <section class="card">
+        <div class="section-head">
+            <div><h2 class="section-title">⏳ Lista de espera <span id="waiting-count" class="count">0</span></h2><p class="section-copy">La prioridad aumenta cuando un jugador no resulta elegido.</p></div>
+        </div>
+        <div id="waiting-list" class="wait-list"><div class="empty">Todavía no hay jugadores inscritos.</div></div>
+        <div id="penalty-box" class="penalty-box hidden">
+            <h3>⏸️ Pausa por retiro</h3>
+            <div id="penalty-list" class="wait-list"></div>
+        </div>
+    </section>
+
+    <section id="admin-card" class="card admin-card hidden">
+        <div class="section-head"><div><h2 class="section-title">⚙️ Control de administración</h2><p class="section-copy">Solo ADMIN y SUPER_ADMIN pueden agregar a otros jugadores o iniciar partidas.</p></div></div>
+        <div id="admin-no-session">
+            <div class="admin-grid">
+                <div class="field"><label for="session-goal">Meta de puntos</label><input id="session-goal" type="number" min="50" step="50" value="200"></div>
+                <button class="success-btn" type="button" onclick="abrirJornada()">Abrir jornada</button>
+            </div>
+        </div>
+        <div id="admin-session-controls" class="hidden">
+            <div class="admin-actions">
+                <button id="initial-draw-button" class="primary-btn" type="button" onclick="sortearMesaInicial()">🎲 Abrir primera mesa</button>
+                <button id="close-session-button" class="danger-btn" type="button" onclick="cerrarJornada()">Cerrar jornada</button>
+            </div>
+            <div class="admin-add">
+                <div class="field"><label for="admin-player-select">Agregar otro jugador</label><select id="admin-player-select"><option value="">Seleccionar jugador…</option></select></div>
+                <button class="secondary-btn" type="button" onclick="adminInscribirJugador()">Añadir a espera</button>
+            </div>
+        </div>
+    </section>
+
+    <aside class="fair-note"><span>⚖️</span><p><strong>Funcionamiento:</strong> cada cuatro jugadores en espera permiten abrir otra mesa. Cuando una partida termina, su pareja ganadora permanece en esa misma mesa y enfrenta a dos retadores de la cola.</p></aside>
+</main>
+<div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
+
+<script>
+    const SUPABASE_URL='https://kzbslfwupzwczmjqfjem.supabase.co';
+    const SUPABASE_ANON_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt6YnNsZnd1cHp3Y3ptanFmamVtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODcxNDI1MzksImV4cCI6MjEwMjcxODUzOX0.qeeh2FV3zKRet-jRMVvJUwBm9jYHsLbWSYWIao574qc';
+    const db = window.supabaseClient ||
+        (window.supabase
+            ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+            : null);
+
+    if (!window.supabaseClient && db) {
+        window.supabaseClient = db;
+    }
+    const CACHE_KEY='cache_tombola_compartida_v2';
+    const ADMIN_ROLES=new Set(['ADMIN','ADMINISTRADOR','SUPER_ADMIN','SUPERADMIN','SUPERUSER','SUPERUSUARIO']);
+    let perfilActual=null,perfilCacheTombola=null,esAdmin=false,sesionActiva=null,inscripciones=[],perfiles=[],mesasTombola=[],mesasPartidas=[],manosActuales=[],ocupados=new Set();
+    let canalRealtime=null,temporizadorActualizacion=null,intervaloActualizacion=null,procesando=false,moduloDisponible=true;
+    let cacheHidratada=false,firmaRenderActual='',actualizacionEnCurso=false;
+
+    function normalizarTema(t){return ['light','dark','amoled'].includes(t)?t:'light'}
+    function temaActual(){if(document.documentElement.classList.contains('amoled-mode'))return'amoled';if(document.documentElement.classList.contains('light-mode'))return'light';return'dark'}
+    function aplicarTema(t,guardar=true){t=normalizarTema(t);const claro=t==='light',amoled=t==='amoled';[document.documentElement,document.body].forEach(e=>{if(e){e.classList.toggle('light-mode',claro);e.classList.toggle('amoled-mode',amoled)}});const mapa={light:['☀️','Claro','oscuro'],dark:['🌙','Oscuro','negro AMOLED'],amoled:['⚫','Negro','claro']},d=mapa[t],b=document.getElementById('theme-toggle');if(b){b.querySelector('.theme-icon').textContent=d[0];b.querySelector('.theme-label').textContent=d[1];b.setAttribute('aria-label',`Cambiar a modo ${d[2]}`)}document.querySelector('meta[name="theme-color"]')?.setAttribute('content',amoled?'#000000':claro?'#f4f7fb':'#101827');if(guardar)try{localStorage.setItem('theme',t);localStorage.removeItem('domino_tema')}catch(e){}}
+    function cambiarTema(){const o=['light','dark','amoled'],a=temaActual();aplicarTema(o[(o.indexOf(a)+1)%o.length])}
+    function esc(v){return String(v??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#039;')}
+    function nombre(p){return p?.username||p?.nombre_completo||'Jugador'}
+    function perfilId(id){return perfiles.find(p=>String(p.id)===String(id))||null}
+    function toast(m){const e=document.getElementById('toast');e.textContent=m;e.classList.remove('hidden');clearTimeout(toast.t);toast.t=setTimeout(()=>e.classList.add('hidden'),3400)}
+    function estadoSync(texto,tipo='live'){const e=document.getElementById('sync-status');e.textContent=texto;e.className=`status-pill${tipo==='wait'?' wait':''}${tipo==='error'?' error':''}`}
+    function mensajeError(error){return error?.message||error?.details||'Ocurrió un error inesperado.'}
+    function esErrorModulo(error){const t=`${error?.code||''} ${error?.message||''}`.toLowerCase();return t.includes('pgrst205')||t.includes('pgrst202')||t.includes('42p01')||t.includes('tombola_sesiones')||t.includes('tombola_inscripciones')||t.includes('tombola_mesas')}
+    function mostrarAviso(texto,error=false){const e=document.getElementById('module-notice');e.textContent=texto;e.className=`notice${error?' error':''}`}
+    function ocultarAviso(){document.getElementById('module-notice').classList.add('hidden')}
+
+    function datosCache(){try{return JSON.parse(localStorage.getItem(CACHE_KEY)||'null')}catch(e){return null}}
+    function firmaEstadoTombola(){return JSON.stringify({sesionActiva,inscripciones,perfiles,mesasTombola,mesasPartidas,manosActuales,ocupados:[...ocupados].map(String).sort(),perfilActual:perfilActual?{id:perfilActual.id,rol:perfilActual.rol,estado:perfilActual.estado}:null})}
+    function guardarCache(){try{localStorage.setItem(CACHE_KEY,JSON.stringify({sesionActiva,inscripciones,perfiles,mesasTombola,mesasPartidas,manosActuales,ocupados:[...ocupados],perfilActual,guardado:Date.now()}))}catch(e){}}
+    function hidratarCache(){const c=datosCache();if(!c)return false;sesionActiva=c.sesionActiva||null;inscripciones=Array.isArray(c.inscripciones)?c.inscripciones:[];perfiles=Array.isArray(c.perfiles)?c.perfiles:[];mesasTombola=Array.isArray(c.mesasTombola)?c.mesasTombola:[];mesasPartidas=Array.isArray(c.mesasPartidas)?c.mesasPartidas:[];manosActuales=Array.isArray(c.manosActuales)?c.manosActuales:[];ocupados=new Set(Array.isArray(c.ocupados)?c.ocupados.map(String):[]);perfilCacheTombola=c.perfilActual||null;renderizar();firmaRenderActual=firmaEstadoTombola();cacheHidratada=true;estadoSync('● Datos guardados','wait');return true}
+
+    function aplicarPerfilTombola(perfil){
+        perfilActual=perfil||null;
+        esAdmin=ADMIN_ROLES.has(String(perfilActual?.rol||'').trim().toUpperCase().replaceAll('-','_'));
+        document.getElementById('session-user').textContent=perfilActual?`👤 ${nombre(perfilActual)}`:'👤 Solo lectura';
+        document.getElementById('self-name').textContent=perfilActual?nombre(perfilActual):'Sin conexión';
+        document.getElementById('admin-card').classList.toggle('hidden',!esAdmin);
+    }
+
+    async function verificarSesion(){
+        if(!db){
+            if(navigator.onLine===false){
+                mostrarAviso('Sin conexión: se muestran los últimos datos guardados.',false);
+                return true;
+            }
+            mostrarAviso('No se pudo iniciar la conexión con la aplicación.',true);
+            return false;
+        }
+
+        const{data:{session}}=await db.auth.getSession();
+        const perfilGuardado=session?.user&&String(perfilCacheTombola?.auth_user_id)===String(session.user.id)
+            ?perfilCacheTombola
+            :null;
+
+        if(perfilGuardado)aplicarPerfilTombola(perfilGuardado);
+
+        if(navigator.onLine===false){
+            aplicarPerfilTombola(perfilGuardado);
+            document.getElementById('admin-card').classList.add('hidden');
+            mostrarAviso('Sin conexión: puedes consultar la última jornada guardada.',false);
+            return true;
+        }
+
+        // En visitas posteriores la sesión y el perfil del mismo usuario ya
+        // están guardados. Entramos inmediatamente y la validación remota se
+        // realiza dentro de actualizarTodo(), sin bloquear la interfaz.
+        if(perfilGuardado){
+            if(String(perfilGuardado.estado||'').toLowerCase()!=='aprobado'){
+                mostrarAviso('Tu perfil debe estar aprobado antes de inscribirte.',true);
+                return false;
+            }
+            return true;
+        }
+
+        if(!session){
+            if(localStorage.getItem('modo_invitado')==='true'){
+                mostrarAviso('El modo invitado puede observar la jornada, pero no puede inscribirse.',true);
+                return false;
+            }
+            location.replace('login.html');
+            return false;
+        }
+
+        const{data,error}=await db.from('perfiles')
+            .select('id,auth_user_id,username,nombre_completo,rol,estado')
+            .eq('auth_user_id',session.user.id)
+            .single();
+
+        if(error||!data){
+            mostrarAviso('No encontramos tu perfil. Vuelve al lobby para actualizar la sesión.',true);
+            return false;
+        }
+
+        aplicarPerfilTombola(data);
+        perfilCacheTombola=data;
+
+        if(String(data.estado||'').toLowerCase()!=='aprobado'){
+            mostrarAviso('Tu perfil debe estar aprobado antes de inscribirte.',true);
+            return false;
+        }
+
+        return true;
+    }
+
+    async function cargarPerfilActualFresco(){
+        const{data:{session}}=await db.auth.getSession();
+        if(!session?.user)return;
+        const{data,error}=await db.from('perfiles')
+            .select('id,auth_user_id,username,nombre_completo,rol,estado')
+            .eq('auth_user_id',session.user.id)
+            .maybeSingle();
+        if(error)throw error;
+        if(!data){
+            aplicarPerfilTombola(null);
+            mostrarAviso('No encontramos tu perfil. Vuelve al lobby para actualizar la sesión.',true);
+            return;
+        }
+        aplicarPerfilTombola(data);
+        perfilCacheTombola=data;
+        if(String(data.estado||'').toLowerCase()!=='aprobado'){
+            mostrarAviso('Tu perfil debe estar aprobado antes de inscribirte.',true);
+        }
+    }
+
+    async function cargarPerfilesYOcupados(){const[pr,mr]=await Promise.all([db.from('perfiles').select('id,auth_user_id,username,nombre_completo,rol,estado').eq('estado','aprobado').order('username'),db.from('mesas').select('jugador1_id,jugador2_id,jugador3_id,jugador4_id').eq('estado','abierta')]);if(pr.error)throw pr.error;if(mr.error)throw mr.error;perfiles=pr.data||[];if(perfilActual){const perfilFresco=perfiles.find(p=>String(p.id)===String(perfilActual.id));if(perfilFresco)aplicarPerfilTombola(perfilFresco)}ocupados=new Set();(mr.data||[]).forEach(m=>[m.jugador1_id,m.jugador2_id,m.jugador3_id,m.jugador4_id].filter(Boolean).forEach(id=>ocupados.add(String(id))))}
+    async function cargarSesion(){const{data,error}=await db.from('tombola_sesiones').select('*').eq('estado','abierta').order('created_at',{ascending:false}).limit(1).maybeSingle();if(error)throw error;sesionActiva=data||null;inscripciones=[];mesasTombola=[];mesasPartidas=[];manosActuales=[];if(!sesionActiva)return;const[ir,tr]=await Promise.all([db.from('tombola_inscripciones').select('*').eq('sesion_id',sesionActiva.id).neq('estado','retirado').order('created_at',{ascending:true}),db.from('tombola_mesas').select('*').eq('sesion_id',sesionActiva.id).neq('estado','cerrada').order('numero',{ascending:true})]);if(ir.error)throw ir.error;if(tr.error)throw tr.error;inscripciones=ir.data||[];mesasTombola=tr.data||[];const ids=mesasTombola.map(m=>m.mesa_actual_id).filter(Boolean);if(!ids.length)return;const[mr,hr]=await Promise.all([db.from('mesas').select('*').in('id',ids),db.from('manos').select('id,mesa_id,puntos_pareja1,puntos_pareja2,anulada,created_at,creado_en').in('mesa_id',ids).order('created_at',{ascending:true})]);if(mr.error)throw mr.error;if(hr.error)throw hr.error;mesasPartidas=mr.data||[];manosActuales=hr.data||[]}
+
+    async function actualizarTodo(manual=false){
+        if(!db||!perfilActual)return;
+        if(!navigator.onLine){
+            estadoSync('● Sin conexión','wait');
+            if(manual)toast('Sin conexión: se muestran los últimos datos guardados.');
+            return;
+        }
+        if(actualizacionEnCurso)return;
+
+        actualizacionEnCurso=true;
+        if(manual||!cacheHidratada)estadoSync('● Sincronizando','wait');
+
+        try{
+            await Promise.all([cargarPerfilActualFresco(),cargarPerfilesYOcupados(),cargarSesion()]);
+            moduloDisponible=true;
+            if(!perfilActual){
+                mostrarAviso('No encontramos tu perfil. Vuelve al lobby para actualizar la sesión.',true);
+            }else if(String(perfilActual.estado||'').toLowerCase()!=='aprobado'){
+                mostrarAviso('Tu perfil debe estar aprobado antes de inscribirte.',true);
+            }else{
+                ocultarAviso();
+            }
+
+            const firmaNueva=firmaEstadoTombola();
+            const huboCambios=firmaNueva!==firmaRenderActual;
+            cacheHidratada=true;
+
+            if(huboCambios){
+                const scrollAnterior=window.scrollY;
+                renderizar();
+                firmaRenderActual=firmaNueva;
+                guardarCache();
+                if(scrollAnterior>0)requestAnimationFrame(()=>window.scrollTo(0,scrollAnterior));
+            }
+
+            estadoSync('● Sincronizado');
+            if(manual)toast(huboCambios?'Jornada actualizada.':'Todo está al día.');
+        }catch(error){
+            console.error(error);
+            if(esErrorModulo(error)){
+                moduloDisponible=false;
+                mostrarAviso(esAdmin?'Falta activar la base de datos de Jugada aleatoria. Ejecuta el archivo supabase_tombola.sql en Supabase SQL Editor.':'La función de Jugada aleatoria todavía no ha sido activada por administración.',true);
+            }
+            estadoSync('● Sin sincronizar','error');
+            if(manual)toast(mensajeError(error));
+        }finally{
+            actualizacionEnCurso=false;
+        }
+    }
+
+    function miInscripcion(){return inscripciones.find(i=>String(i.jugador_id)===String(perfilActual?.id))||null}
+    function partidaDe(control){return mesasPartidas.find(m=>String(m.id)===String(control?.mesa_actual_id))||null}
+    function calcularMarcador(mesaId){return manosActuales.filter(m=>String(m.mesa_id)===String(mesaId)&&!m.anulada).reduce((a,m)=>{a.p1+=Number(m.puntos_pareja1)||0;a.p2+=Number(m.puntos_pareja2)||0;return a},{p1:0,p2:0})}
+    function datosGanador(control){const mesa=partidaDe(control);if(!mesa)return null;const s=calcularMarcador(mesa.id),meta=Number(sesionActiva?.limite_puntos||mesa.limite_puntos||200);if(Math.max(s.p1,s.p2)<meta||s.p1===s.p2)return null;return s.p1>s.p2?{lado:1,ids:[mesa.jugador1_id,mesa.jugador3_id],puntos:s.p1}:{lado:2,ids:[mesa.jugador2_id,mesa.jugador4_id],puntos:s.p2}}
+
+    function renderizarMiEstado(){const b=document.getElementById('self-action'),s=document.getElementById('self-state');if(!perfilActual){s.textContent='Verificando tu cuenta…';b.textContent='Inscribirme';b.disabled=true;return}const i=miInscripcion();if(!sesionActiva){s.textContent=esAdmin?'Abre una jornada para comenzar las inscripciones.':'Esperando que administración abra la jornada.';b.textContent='Inscribirme';b.disabled=true;return}if(!i){s.textContent=ocupados.has(String(perfilActual.id))?'Ya participas en otra mesa activa.':'Aún no estás en la lista de espera.';b.textContent='Inscribirme';b.className='primary-btn';b.disabled=ocupados.has(String(perfilActual.id));return}const faltan=Math.max(0,Number(i.bloqueado_hasta_ronda||0)-Number(sesionActiva.ronda_actual||0)),textos={espera:'Inscrito y esperando el próximo sorteo.',seleccionado:'Fuiste seleccionado. Puedes retirarte desde la tarjeta antes de iniciar.',jugando:'Estás jugando en una mesa activa.',reina:'Tu pareja ganó y espera nuevos retadores.',penalizado:`En pausa: faltan ${faltan} ronda${faltan===1?'':'s'} antes de volver a la tómbola.`};s.textContent=textos[i.estado]||'Inscripción activa.';b.textContent=i.estado==='espera'?'Retirarme':i.estado==='penalizado'?'En pausa':'Participando';b.className=i.estado==='espera'?'danger-btn':'secondary-btn';b.disabled=i.estado!=='espera'}
+    function renderizarEspera(){const e=document.getElementById('waiting-list'),lista=inscripciones.filter(i=>i.estado==='espera').sort((a,b)=>b.prioridad-a.prioridad||new Date(a.created_at)-new Date(b.created_at)),pausados=inscripciones.filter(i=>i.estado==='penalizado'),box=document.getElementById('penalty-box'),pList=document.getElementById('penalty-list');document.getElementById('waiting-count').textContent=lista.length;e.innerHTML=lista.length?lista.map((i,n)=>{const p=perfilId(i.jugador_id),puedeQuitar=esAdmin&&String(i.jugador_id)!==String(perfilActual?.id);return `<div class="wait-row"><span class="position">${n+1}</span><span class="person"><strong>${esc(nombre(p))}</strong><small>Inscrito por ${String(i.inscrito_por)===String(i.jugador_id)?'sí mismo':'administración'}</small></span><span class="priority">${i.prioridad===1?'Nuevo':`Prioridad ${i.prioridad}`}</span>${puedeQuitar?`<button class="icon-btn" type="button" data-id="${esc(i.jugador_id)}" onclick="adminRetirarJugador(this.dataset.id)" aria-label="Retirar jugador">×</button>`:''}</div>`}).join(''):'<div class="empty">Todavía no hay jugadores esperando el sorteo.</div>';box.classList.toggle('hidden',!pausados.length);pList.innerHTML=pausados.map(i=>{const faltan=Math.max(0,Number(i.bloqueado_hasta_ronda||0)-Number(sesionActiva?.ronda_actual||0));return `<div class="wait-row"><span class="position">⏸</span><span class="person"><strong>${esc(nombre(perfilId(i.jugador_id)))}</strong><small>Se retiró antes de iniciar una mesa</small></span><span class="priority">${faltan} ronda${faltan===1?'':'s'}</span></div>`}).join('')}
+    function fichaSeleccionado(control,id){const vacio=!id,puede=!vacio&&(esAdmin||String(id)===String(perfilActual?.id));return `<div class="pending-player"><span>${vacio?'Esperando reemplazo':esc(nombre(perfilId(id)))}</span>${puede?`<button class="remove-selected" type="button" data-table="${esc(control.id)}" data-player="${esc(id)}" onclick="retirarSeleccionado(this.dataset.table,this.dataset.player)" aria-label="Retirarse de esta selección">×</button>`:''}</div>`}
+
+    function renderizarJuegos(){
+        const section=document.getElementById('games-section');
+        const list=document.getElementById('games-list');
+        const esperando=inscripciones.filter(i=>i.estado==='espera').length;
+        section.classList.toggle('hidden',!sesionActiva||!mesasTombola.length);
+        document.getElementById('games-count').textContent=mesasTombola.length;
+        if(!mesasTombola.length){list.innerHTML='';return}
+
+        list.innerHTML=mesasTombola.map(control=>{
+            const mesa=partidaDe(control);
+
+            if(control.estado==='pendiente'){
+                const ids=[control.pendiente_jugador1_id,control.pendiente_jugador2_id,control.pendiente_jugador3_id,control.pendiente_jugador4_id];
+                const completa=ids.every(Boolean);
+                const esMia=ids.filter(Boolean).map(String).includes(String(perfilActual?.id));
+                const puedeIniciar=esAdmin||esMia;
+                const mostrarAcciones=puedeIniciar||(esAdmin&&!completa);
+                return `<article class="game-card card${esMia?' mine':''}">
+                    <div class="game-top">
+                        <div>
+                            <div class="game-heading"><span class="game-number">Mesa ${control.numero}</span><h3 class="section-title">Por confirmar</h3>${esMia?'<span class="mine-pill">Fuiste elegido</span>':''}</div>
+                            <p class="section-copy">Cualquiera de los cuatro jugadores seleccionados puede confirmar e iniciar la mesa.</p>
+                        </div>
+                        <div class="card-corner-actions">${esAdmin?`<button class="close-pending" type="button" data-id="${esc(control.id)}" onclick="cerrarMesaPendiente(this.dataset.id)" aria-label="Cerrar mesa pendiente">×</button>`:''}</div>
+                    </div>
+                    <div class="pending-grid">
+                        <div class="pending-team one"><h4>Pareja 1</h4>${fichaSeleccionado(control,control.pendiente_jugador1_id)}${fichaSeleccionado(control,control.pendiente_jugador3_id)}</div>
+                        <div class="pending-team two"><h4>Pareja 2</h4>${fichaSeleccionado(control,control.pendiente_jugador2_id)}${fichaSeleccionado(control,control.pendiente_jugador4_id)}</div>
+                    </div>
+                    ${mostrarAcciones?`<div class="start-actions">${puedeIniciar?`<button class="success-btn" type="button" data-id="${esc(control.id)}" onclick="iniciarMesa(this.dataset.id)" ${completa?'':'disabled'}>▶ Iniciar mesa</button>`:''}${esAdmin&&!completa?`<button class="secondary-btn" type="button" data-id="${esc(control.id)}" onclick="completarMesa(this.dataset.id)" ${esperando<1?'disabled':''}>🎲 Buscar reemplazo</button>`:''}</div>`:''}
+                </article>`;
+            }
+
+            if(!mesa){
+                const q1=control.pareja_reina_j1_id;
+                const q2=control.pareja_reina_j2_id;
+                const nombres=q1&&q2?`${nombre(perfilId(q1))} / ${nombre(perfilId(q2))}`:'Sin pareja asignada';
+                const puedeElegir=esAdmin||[q1,q2].filter(Boolean).map(String).includes(String(perfilActual?.id));
+                return `<article class="game-card card">
+                    <div class="game-top">
+                        <div><div class="game-heading"><span class="game-number">Mesa ${control.numero}</span><h3 class="section-title">👑 Ganadores esperando</h3></div><p class="section-copy">Esta mesa necesita dos nuevos retadores.</p></div>
+                        <div class="card-corner-actions">${esAdmin?`<button class="close-pending" type="button" data-id="${esc(control.id)}" onclick="cerrarMesaPendiente(this.dataset.id)" aria-label="Cerrar mesa pendiente">×</button>`:''}</div>
+                    </div>
+                    <div class="queen-card"><div><strong>${esc(nombres)}</strong><span>${esperando>=2?'Hay retadores disponibles.':'Faltan jugadores en la cola.'}</span></div>${puedeElegir?`<button class="success-btn" type="button" data-id="${esc(control.id)}" onclick="reanudarMesa(this.dataset.id)" ${esperando<2?'disabled':''}>Elegir retadores</button>`:''}</div>
+                </article>`;
+            }
+
+            const score=calcularMarcador(mesa.id);
+            const meta=Number(sesionActiva?.limite_puntos||mesa.limite_puntos||200);
+            const ganador=datosGanador(control);
+            const ids=[mesa.jugador1_id,mesa.jugador2_id,mesa.jugador3_id,mesa.jugador4_id].map(String);
+            const esMia=ids.includes(String(perfilActual?.id));
+            const puedeRotar=esAdmin||ganador?.ids.map(String).includes(String(perfilActual?.id));
+            const rival=ganador&&esperando===0?mesasTombola.find(c=>String(c.id)!==String(control.id)&&c.estado==='activa'&&datosGanador(c)):null;
+            const puedeCruzar=!!rival&&(esAdmin||ganador.ids.map(String).includes(String(perfilActual?.id)));
+            const rondas=manosActuales.filter(m=>String(m.mesa_id)===String(mesa.id)&&!m.anulada).length;
+            const mayor=Math.max(score.p1,score.p2);
+            const progreso=Math.min(Math.round((mayor/meta)*100),100);
+            return `<article class="game-card card mesa-card-vivo${esMia?' mine':''}">
+                <div class="mesa-live-header"><div class="mesa-live-title"><span class="mesa-live-icon" aria-hidden="true">🁣</span><div><strong>Mesa #${control.numero}</strong><span>Meta: ${meta} puntos</span></div></div><div class="rondas-pill"><span>Manos</span><strong>${rondas}</strong></div></div>
+                <div class="marcador-grid"><div class="equipo-score-box team-a"><div class="equipo-score-label">Pareja 1</div><div class="equipo-score-names">${esc(nombre(perfilId(mesa.jugador1_id)))} & ${esc(nombre(perfilId(mesa.jugador3_id)))}</div><div class="score-a">${score.p1}</div></div><div class="equipo-score-box team-b"><div class="equipo-score-label">Pareja 2</div><div class="equipo-score-names">${esc(nombre(perfilId(mesa.jugador2_id)))} & ${esc(nombre(perfilId(mesa.jugador4_id)))}</div><div class="score-b">${score.p2}</div></div></div>
+                <div><div class="mesa-progress-label"><span>Progreso hacia la meta</span><span>${progreso}%</span></div><div class="progress-track"><div class="progress-fill" style="width:${progreso}%"></div></div></div>
+                <a class="table-entry mesa-enter-btn" href="mesa.html?id=${encodeURIComponent(mesa.id)}&return=tombola.html"><span>Entrar a la mesa</span><span aria-hidden="true">→</span></a>
+                ${ganador?`<div class="winner">🏆 ${ganador.ids.map(id=>esc(nombre(perfilId(id)))).join(' / ')} ganó con ${ganador.puntos} puntos.</div>`:''}
+                ${ganador&&(puedeRotar||puedeCruzar)?`<div class="next-actions">${puedeCruzar?`<button class="champion-btn" type="button" data-id="${esc(control.id)}" data-rival="${esc(rival.id)}" onclick="enfrentarGanadores(this.dataset.id,this.dataset.rival)">🏆 Enfrentar ganadores de Mesa #${rival.numero}</button><div class="champion-note">No hay jugadores en espera: esta opción cierra una de las mesas y enfrenta a ambas parejas ganadoras.</div>`:''}${puedeRotar?`<button class="success-btn" type="button" data-id="${esc(control.id)}" onclick="abrirSiguienteMesa(this.dataset.id)">🎲 Rotar esta mesa</button>`:''}</div>`:''}
+            </article>`;
+        }).join('');
+    }
+    function renderizarAdmin(){if(!esAdmin)return;document.getElementById('admin-no-session').classList.toggle('hidden',!!sesionActiva);document.getElementById('admin-session-controls').classList.toggle('hidden',!sesionActiva);if(!sesionActiva)return;const esperando=inscripciones.filter(i=>i.estado==='espera').length;const inicial=document.getElementById('initial-draw-button');inicial.textContent=mesasTombola.length?'🎲 Abrir otra mesa':'🎲 Abrir primera mesa';inicial.disabled=esperando<4;document.getElementById('close-session-button').disabled=false;const inscritos=new Set(inscripciones.filter(i=>i.estado!=='retirado').map(i=>String(i.jugador_id))),select=document.getElementById('admin-player-select');select.innerHTML='<option value="">Seleccionar jugador…</option>'+perfiles.filter(p=>!inscritos.has(String(p.id))&&!ocupados.has(String(p.id))).map(p=>`<option value="${esc(p.id)}">${esc(nombre(p))}</option>`).join('')}
+    function renderizar(){document.getElementById('session-state').textContent=sesionActiva?`Jornada abierta · ${sesionActiva.limite_puntos} pts · ${mesasTombola.length} mesa${mesasTombola.length===1?'':'s'}`:'Sin jornada abierta';renderizarMiEstado();renderizarEspera();renderizarJuegos();renderizarAdmin()}
+
+    async function ejecutarRpc(nombreRpc,parametros={},exito='Actualizado.'){if(procesando||!moduloDisponible)return;procesando=true;try{const{data,error}=await db.rpc(nombreRpc,parametros);if(error)throw error;toast(exito);await actualizarTodo();return data}catch(error){console.error(error);if(esErrorModulo(error)){moduloDisponible=false;mostrarAviso('Falta ejecutar supabase_tombola.sql en Supabase antes de usar esta función.',true)}else toast(mensajeError(error));return null}finally{procesando=false}}
+    async function alternarMiInscripcion(){const i=miInscripcion();if(i?.estado==='espera')await ejecutarRpc('tombola_retirarme',{},'Saliste de la lista de espera.');else await ejecutarRpc('tombola_inscribirme',{},'Ya estás inscrito en la jugada aleatoria.')}
+    async function abrirJornada(){const meta=Math.max(50,Number(document.getElementById('session-goal').value)||200);await ejecutarRpc('tombola_abrir_sesion',{p_limite_puntos:meta},'Jornada abierta. Los jugadores ya pueden inscribirse.')}
+    async function cerrarJornada(){const activas=mesasTombola.filter(m=>m.estado==='activa'&&m.mesa_actual_id).length,pendientes=mesasTombola.filter(m=>m.estado==='pendiente'||m.estado==='esperando').length;const detalle=activas||pendientes?`\n\nSe cerrarán ${activas===1?'1 mesa activa':`${activas} mesas activas`} y ${pendientes===1?'1 selección pendiente':`${pendientes} selecciones pendientes`}.`:'';if(!confirm(`¿Cerrar toda la jornada de jugada aleatoria?${detalle}\n\nLos jugadores serán retirados de esta jornada.`))return;await ejecutarRpc('tombola_cerrar_sesion',{p_sesion_id:sesionActiva.id},'Jornada y mesas cerradas correctamente.')}
+    async function adminInscribirJugador(){const id=document.getElementById('admin-player-select').value;if(!id){toast('Selecciona un jugador.');return}await ejecutarRpc('tombola_admin_inscribir',{p_jugador_id:id},'Jugador añadido a la espera.')}
+    async function adminRetirarJugador(id){await ejecutarRpc('tombola_admin_retirar',{p_jugador_id:id},'Jugador retirado de la espera.')}
+    async function sortearMesaInicial(){const id=await ejecutarRpc('tombola_sortear_mesa_inicial',{p_sesion_id:sesionActiva.id},'Jugadores seleccionados. Confirma la tarjeta antes de iniciar.');if(id)toast('La mesa quedó pendiente de confirmación.')}
+    async function reanudarMesa(controlId){const id=await ejecutarRpc('tombola_reanudar_mesa',{p_tombola_mesa_id:controlId},'Retadores seleccionados. Confirma los nombres antes de iniciar.');if(id)toast('La mesa está pendiente de confirmación.')}
+    async function cerrarMesaPendiente(controlId){if(!confirm('¿Estás seguro de que quieres cerrar esta mesa? Todavía no ha iniciado y los jugadores volverán a la lista de espera.'))return;await ejecutarRpc('tombola_cerrar_mesa_pendiente',{p_tombola_mesa_id:controlId},'Mesa cerrada y jugadores devueltos a la espera.')}
+    async function retirarSeleccionado(controlId,jugadorId){if(!confirm('¿Retirar a este jugador? Tendrá que esperar 3 rondas para volver a la tómbola.'))return;const reemplazo=await ejecutarRpc('tombola_retirar_seleccionado',{p_tombola_mesa_id:controlId,p_jugador_id:jugadorId},'Jugador retirado y pausa aplicada.');if(reemplazo)toast('Se eligió automáticamente un reemplazo.')}
+    async function completarMesa(controlId){const cantidad=await ejecutarRpc('tombola_completar_mesa_pendiente',{p_tombola_mesa_id:controlId},'Selección completada.');if(!cantidad)toast('Todavía no hay reemplazos disponibles.')}
+    async function iniciarMesa(controlId){if(!confirm('¿Confirmas que los cuatro jugadores están listos y quieres iniciar esta mesa?'))return;const id=await ejecutarRpc('tombola_iniciar_mesa',{p_tombola_mesa_id:controlId},'Mesa iniciada. Ya pueden comenzar a anotar.');if(id)toast('La mesa está en juego.')}
+    async function abrirSiguienteMesa(controlId){const control=mesasTombola.find(m=>String(m.id)===String(controlId)),g=datosGanador(control);if(!g){toast('Esta partida todavía no tiene ganador.');return}const id=await ejecutarRpc('tombola_abrir_siguiente_mesa',{p_sesion_id:sesionActiva.id,p_tombola_mesa_id:controlId},'Resultado confirmado y mesa rotada.');if(id)toast('Los ganadores enfrentan a dos nuevos retadores.');else toast('La pareja ganadora queda esperando dos retadores.')}
+    async function enfrentarGanadores(controlId,rivalId){if(!confirm('¿Enfrentar a las parejas ganadoras de estas dos mesas? Las partidas terminadas se cerrarán y quedará una nueva mesa pendiente de confirmación.'))return;const id=await ejecutarRpc('tombola_enfrentar_ganadores',{p_mesa_principal_id:controlId,p_mesa_rival_id:rivalId},'Parejas ganadoras seleccionadas.');if(id)toast('Los cuatro ganadores deben confirmar antes de iniciar la nueva mesa.')}
+
+    function programarActualizacion(){clearTimeout(temporizadorActualizacion);temporizadorActualizacion=setTimeout(()=>actualizarTodo(),450)}
+    function conectarRealtime(){if(!db)return;if(canalRealtime)db.removeChannel(canalRealtime);canalRealtime=db.channel('tombola-compartida').on('postgres_changes',{event:'*',schema:'public',table:'tombola_sesiones'},programarActualizacion).on('postgres_changes',{event:'*',schema:'public',table:'tombola_inscripciones'},programarActualizacion).on('postgres_changes',{event:'*',schema:'public',table:'tombola_mesas'},programarActualizacion).on('postgres_changes',{event:'*',schema:'public',table:'mesas'},programarActualizacion).on('postgres_changes',{event:'*',schema:'public',table:'manos'},programarActualizacion).subscribe()}
+    function iniciarActualizacionTombola(){
+        if(navigator.onLine===false)return;
+        conectarRealtime();
+        actualizarTodo();
+        if(!intervaloActualizacion){
+            intervaloActualizacion=setInterval(()=>{
+                if(!document.hidden)actualizarTodo();
+            },60000);
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded',async()=>{
+        let t='light';
+        try{t=normalizarTema(localStorage.getItem('theme'))}catch(e){}
+        aplicarTema(t,false);
+        const habiaCache=hidratarCache();
+
+        try{
+            const ok=await verificarSesion();
+            if(!ok)return;
+
+            // Los datos guardados ya están visibles. Solo actualizamos los
+            // controles ligados a la sesión y dejamos la red en segundo plano.
+            renderizar();
+            firmaRenderActual=firmaEstadoTombola();
+            guardarCache();
+            cacheHidratada=Boolean(habiaCache);
+
+            if(navigator.onLine===false){
+                estadoSync('● Sin conexión','wait');
+            }else{
+                iniciarActualizacionTombola();
+            }
+        }catch(error){
+            console.error(error);
+            estadoSync('● Sin sincronizar','error');
+            mostrarAviso('No fue posible iniciar Jugada aleatoria. Revisa la conexión y vuelve a intentarlo.',true);
+        }
+
+        window.addEventListener('online',iniciarActualizacionTombola);
+        window.addEventListener('offline',()=>estadoSync('● Sin conexión','wait'));
+        document.addEventListener('visibilitychange',()=>{
+            if(!document.hidden)actualizarTodo();
+        });
+    });
+    window.addEventListener('beforeunload',()=>{if(intervaloActualizacion)clearInterval(intervaloActualizacion);if(canalRealtime&&db)db.removeChannel(canalRealtime)});
+</script>
+</body>
+</html>

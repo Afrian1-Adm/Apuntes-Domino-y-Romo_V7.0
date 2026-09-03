@@ -1,0 +1,1413 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <script src="offline-mode.js"></script>
+    <script src="vista-app.js"></script>
+    <meta name="theme-color" content="#0f172a">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <link rel="manifest" href="manifest.json">
+    <title>Mi Perfil - Dominó</title>
+    
+    <!-- Script de carga inmediata para el tema y la vista de la app instalada -->
+    <script>
+        function esAppInstalada() {
+            return window.matchMedia('(display-mode: standalone)').matches
+                || window.navigator.standalone === true;
+        }
+
+        function ajustarEscalaAppInstalada() {
+            if (window.AppViewMode?.apply) {
+                window.AppViewMode.apply();
+                return;
+            }
+
+            const html = document.documentElement;
+            const agenteMovil = navigator.userAgentData?.mobile === true
+                || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+            const esDispositivoTactil = window.matchMedia('(pointer: coarse)').matches
+                || agenteMovil;
+
+            if (!esAppInstalada() || !esDispositivoTactil) {
+                html.classList.remove('app-viewport-corregido', 'app-phone-layout');
+                return;
+            }
+
+            const anchoLienzo = Math.max(window.innerWidth || 0, html.clientWidth || 0);
+            const anchoPantalla = Number(window.screen?.width) || 0;
+            const anchoDisponible = Number(window.screen?.availWidth) || anchoPantalla;
+            const dpr = Math.max(Number(window.devicePixelRatio) || 1, 1);
+            let anchoMovil = Math.min(
+                ...[anchoPantalla, anchoDisponible].filter(valor => valor > 0)
+            );
+
+            if (anchoMovil > 600) {
+                const anchoCorregido = anchoMovil / dpr;
+                anchoMovil = anchoCorregido >= 280 && anchoCorregido <= 600
+                    ? anchoCorregido
+                    : 390;
+            }
+
+            html.classList.toggle('app-phone-layout', anchoMovil <= 430);
+
+            const usaLienzoDeEscritorio = anchoLienzo > 760
+                && anchoLienzo > anchoMovil * 1.35;
+
+            if (!usaLienzoDeEscritorio) {
+                html.classList.remove('app-viewport-corregido');
+                html.style.removeProperty('--app-mobile-width');
+                html.style.removeProperty('--app-mobile-height');
+                html.style.removeProperty('--app-mobile-scale');
+                return;
+            }
+
+            const escala = Math.min(Math.max(anchoLienzo / anchoMovil, 1), 4);
+            html.style.setProperty('--app-mobile-width', `${anchoMovil}px`);
+            html.style.setProperty('--app-mobile-height', `${Math.ceil(window.innerHeight / escala)}px`);
+            html.style.setProperty('--app-mobile-scale', escala.toFixed(4));
+            html.classList.add('app-viewport-corregido');
+        }
+
+        (function() {
+            if (esAppInstalada()) {
+                document.documentElement.classList.add('app-mobile-layout');
+                ajustarEscalaAppInstalada();
+            }
+
+            try {
+                const savedTheme = localStorage.getItem('theme') || 'dark';
+                if (savedTheme === 'light') {
+                    document.documentElement.classList.add('light-mode');
+                }
+            } catch (error) {
+                console.error('Error al cargar el tema:', error);
+            }
+        })();
+    </script>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="app-notifications.js"></script>
+    <script src="cache.js"></script>
+
+    <style>
+    :root {
+        --bg-color: #08111f;
+        --card-bg: #101d31;
+        --card-inner: #172740;
+        --accent: #60a5fa;
+        --accent-green: #10b981;
+        --accent-red: #f87171;
+        --accent-amber: #fbbf24;
+        --rank-gold: #f6c453;
+        --rank-silver: #c5cfdf;
+        --rank-bronze: #e19a67;
+        --text: #f8fbff;
+        --text-muted: #9fb0c7;
+        --border-color: rgba(96, 165, 250, 0.22);
+        --shadow-blue: 0 14px 36px rgba(15, 91, 189, 0.20), 0 3px 10px rgba(2, 8, 23, 0.24);
+        --shadow-hover: 0 18px 42px rgba(37, 99, 235, 0.28), 0 6px 14px rgba(2, 8, 23, 0.28);
+        --role-jugador: #38bdf8;
+        --role-invitado: #fbbf24;
+        --role-admin: #c084fc;
+        --role-superadmin: #f472b6;
+    }
+
+    html.light-mode {
+        --bg-color: #f7faff;
+        --card-bg: #ffffff;
+        --card-inner: #f5f8fc;
+        --accent: #3b82f6;
+        --accent-green: #059669;
+        --accent-red: #dc2626;
+        --accent-amber: #d97706;
+        --rank-gold: #b98900;
+        --rank-silver: #728096;
+        --rank-bronze: #b86a36;
+        --text: #0b1f3a;
+        --text-muted: #64748b;
+        --border-color: #d9e4f2;
+        --shadow-blue: 0 14px 34px rgba(59, 130, 246, 0.12), 0 3px 10px rgba(30, 64, 175, 0.07);
+        --shadow-hover: 0 18px 42px rgba(59, 130, 246, 0.18), 0 6px 14px rgba(30, 64, 175, 0.10);
+        --role-jugador: #0284c7;
+        --role-invitado: #d97706;
+        --role-admin: #7c3aed;
+        --role-superadmin: #db2777;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body {
+        min-height: 100vh;
+        background:
+            radial-gradient(circle at 8% 5%, rgba(59, 130, 246, 0.12), transparent 28rem),
+            radial-gradient(circle at 92% 2%, rgba(16, 185, 129, 0.07), transparent 25rem),
+            var(--bg-color);
+        color: var(--text);
+        padding: 24px 18px 48px;
+        display: flex;
+        justify-content: center;
+        transition: background-color 0.3s, color 0.3s;
+    }
+
+    html.app-viewport-corregido { overflow-x: hidden; }
+    html.app-viewport-corregido body {
+        width: var(--app-mobile-width);
+        min-height: var(--app-mobile-height);
+    }
+    @supports (zoom: 1) {
+        html.app-viewport-corregido body { zoom: var(--app-mobile-scale); }
+    }
+    @supports not (zoom: 1) {
+        html.app-viewport-corregido body {
+            transform: scale(var(--app-mobile-scale));
+            transform-origin: top left;
+        }
+    }
+
+    button, input, summary { font: inherit; }
+    .container { width: 100%; max-width: 620px; display: flex; flex-direction: column; gap: 20px; }
+    .nav-actions { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+    .btn-back {
+        min-height: 46px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        padding: 10px 18px;
+        background: var(--card-bg);
+        color: var(--accent);
+        text-decoration: none;
+        border: 1px solid var(--border-color);
+        border-radius: 14px;
+        box-shadow: var(--shadow-blue);
+        font-weight: 800;
+        font-size: 0.9rem;
+        cursor: pointer;
+        transition: transform .2s, box-shadow .2s, background-color .3s;
+    }
+    .btn-back:hover { transform: translateY(-2px); box-shadow: var(--shadow-hover); }
+    .theme-button { min-width: 112px; flex: 0 0 auto; }
+
+    .page-header, .card {
+        background: var(--card-bg);
+        border: 1px solid var(--border-color);
+        box-shadow: var(--shadow-blue);
+    }
+    .page-header { display: flex; align-items: center; gap: 16px; padding: 24px 28px; border-radius: 22px; }
+    .brand-mark {
+        width: 54px;
+        height: 54px;
+        flex: 0 0 54px;
+        display: grid;
+        place-items: center;
+        border-radius: 17px;
+        font-size: 1.7rem;
+        background: linear-gradient(145deg, rgba(59, 130, 246, .18), rgba(16, 185, 129, .10));
+        border: 1px solid rgba(96, 165, 250, .24);
+    }
+    .header-copy { flex: 1; min-width: 0; }
+    .page-header h1 { font-size: clamp(1.65rem, 4vw, 2.25rem); font-weight: 900; letter-spacing: -.035em; }
+    .page-header p { margin-top: 5px; color: var(--text-muted); font-size: .95rem; }
+
+    .profile-hero { position: relative; min-height: 170px; display: grid; grid-template-columns: 1fr; align-items: center; padding: 24px; border-radius: 22px; }
+    .profile-person { display: flex; align-items: center; gap: 16px; min-width: 0; padding-right: 205px; }
+    .profile-person > div:last-child { min-width: 0; }
+    .profile-avatar {
+        width: 76px;
+        height: 76px;
+        flex: 0 0 76px;
+        display: grid;
+        place-items: center;
+        border-radius: 24px;
+        background: linear-gradient(145deg, #60a5fa, #2563eb);
+        color: white;
+        font-size: 2rem;
+        font-weight: 900;
+        box-shadow: 0 12px 25px rgba(37, 99, 235, .25);
+    }
+    .profile-name { font-size: clamp(1.4rem, 4vw, 2rem); font-weight: 900; letter-spacing: -.025em; overflow-wrap: anywhere; }
+    .profile-alias { margin-top: 4px; color: var(--text-muted); font-weight: 650; }
+    .profile-meta { position: absolute; top: 22px; right: 22px; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+    .status-pill { display: inline-flex; align-items: center; gap: 7px; padding: 6px 10px; border-radius: 999px; background: rgba(16, 185, 129, .10); color: var(--accent-green); font-size: .75rem; font-weight: 850; }
+    .status-pill::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: currentColor; box-shadow: 0 0 0 4px rgba(16, 185, 129, .10); }
+    .badge-rol { padding: 6px 10px; border-radius: 999px; font-size: .72rem; font-weight: 850; text-transform: uppercase; display: inline-flex; align-items: center; }
+    .badge-jugador { background: rgba(56, 189, 248, .12); color: var(--role-jugador); border: 1px solid rgba(56, 189, 248, .32); }
+    .badge-admin { background: rgba(168, 85, 247, .12); color: var(--role-admin); border: 1px solid rgba(168, 85, 247, .30); }
+    .badge-superadmin { background: rgba(236, 72, 153, .12); color: var(--role-superadmin); border: 1px solid rgba(236, 72, 153, .30); }
+    .profile-quick-link { position: static; min-width: 0; min-height: 38px; padding: 7px 11px; border-radius: 11px; box-shadow: none; display: inline-flex; align-items: center; justify-content: center; font-size: .76rem; }
+
+    .card { border-radius: 20px; padding: 22px; }
+    .section-title { margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; gap: 12px; font-size: 1.05rem; font-weight: 850; }
+    .section-subtitle { color: var(--text-muted); font-size: .82rem; font-weight: 500; }
+    .stats-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    .stat-card { min-width: 0; background: var(--card-inner); border: 1px solid var(--border-color); border-radius: 15px; padding: 16px; text-align: left; }
+    .stat-card h3 { margin-bottom: 11px; font-size: .72rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: .045em; }
+    .stat-main { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding-bottom: 10px; border-bottom: 1px solid var(--border-color); }
+    .stat-main span { color: var(--text-muted); font-size: .78rem; font-weight: 750; }
+    .stat-main strong { color: var(--accent); font-size: 1.55rem; font-weight: 900; }
+    .stat-details { display: grid; gap: 8px; margin-top: 10px; }
+    .stat-detail { display: flex; align-items: center; justify-content: space-between; gap: 10px; color: var(--text-muted); font-size: .76rem; font-weight: 700; }
+    .stat-detail strong { color: var(--text); font-size: .82rem; font-weight: 900; text-align: right; }
+    .stat-detail strong.good { color: var(--accent-green); }
+    .stat-detail strong.bad { color: var(--accent-red); }
+    .stat-detail strong.warm { color: var(--accent-amber); }
+    .rank-gold { color: var(--rank-gold) !important; }
+    .rank-silver { color: var(--rank-silver) !important; }
+    .rank-bronze { color: var(--rank-bronze) !important; }
+    #stat-elo-puntos { color: var(--accent) !important; }
+    .content-grid { display: grid; grid-template-columns: 1fr; gap: 20px; align-items: start; }
+
+    .tabla-custom { width: 100%; border-collapse: collapse; text-align: left; font-size: .85rem; }
+    .tabla-custom th { padding: 10px 8px; color: var(--text-muted); border-bottom: 1px solid var(--border-color); font-size: .72rem; text-transform: uppercase; letter-spacing: .04em; }
+    .tabla-custom td { padding: 13px 8px; border-bottom: 1px solid var(--border-color); vertical-align: middle; }
+    .tabla-custom tr:last-child td { border-bottom: 0; }
+
+    .badges-container { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+    .profile-badge-card { background: var(--card-bg); border-radius: 17px; padding: 16px; border: 1px solid var(--border-color); box-shadow: var(--shadow-blue); display: flex; align-items: center; gap: 14px; position: relative; overflow: hidden; }
+    .profile-badge-card::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 5px; }
+    .badge-icon { font-size: 2rem; display: flex; align-items: center; justify-content: center; min-width: 44px; }
+    .badge-info h4 { font-size: .92rem; font-weight: 850; margin-bottom: 3px; }
+    .badge-info p { font-size: .76rem; color: var(--text-muted); line-height: 1.35; }
+    .badge-card-cumple::before { background: #818cf8; }
+    .badge-card-onfire::before { background: #f59e0b; }
+    .badge-card-mes::before { background: #10b981; }
+
+    .settings-stack { display: grid; gap: 12px; }
+    details.settings-panel { border: 1px solid var(--border-color); border-radius: 15px; background: var(--card-inner); overflow: hidden; }
+    details.settings-panel summary { list-style: none; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 15px 16px; cursor: pointer; font-weight: 800; }
+    details.settings-panel summary::-webkit-details-marker { display: none; }
+    details.settings-panel summary::after { content: '＋'; color: var(--accent); font-size: 1.2rem; }
+    details.settings-panel[open] summary::after { content: '−'; }
+    .settings-content { padding: 0 16px 16px; border-top: 1px solid var(--border-color); }
+    .form-grid { display: grid; gap: 12px; padding-top: 16px; }
+    .form-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    input, select { width: 100%; min-height: 46px; padding: 11px 13px; border-radius: 11px; border: 1px solid var(--border-color); background: var(--card-bg); color: var(--text); font-size: .9rem; outline: none; }
+    input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(59, 130, 246, .12); }
+    input::placeholder { color: var(--text-muted); }
+    label { font-size: .75rem; color: var(--text-muted); display: block; margin-bottom: 5px; font-weight: 700; }
+    .btn { width: 100%; min-height: 46px; padding: 11px 15px; border: 0; border-radius: 11px; font-weight: 850; cursor: pointer; background: var(--accent); color: white; font-size: .9rem; }
+    .btn-green { background: var(--accent-green); }
+    .error-banner, .success-banner { padding: 13px 16px; border-radius: 14px; font-size: .85rem; text-align: center; box-shadow: var(--shadow-blue); }
+    .error-banner { background: rgba(239, 68, 68, .12); border: 1px solid rgba(239, 68, 68, .35); color: var(--accent-red); }
+    .success-banner { background: rgba(16, 185, 129, .12); border: 1px solid rgba(16, 185, 129, .32); color: var(--accent-green); }
+    .hidden { display: none !important; }
+
+    html.app-mobile-layout body { padding: 18px 14px 36px; }
+    html.app-mobile-layout .container { gap: 16px; }
+    html.app-mobile-layout .nav-actions { order: -2; }
+    html.app-mobile-layout .btn-back { min-height: 52px; border-radius: 16px; }
+    html.app-mobile-layout .nav-actions > *:first-child { flex: 1; }
+    html.app-mobile-layout .page-header { padding: 20px 18px; border-radius: 20px; }
+    html.app-mobile-layout .page-header h1 { font-size: 1.55rem; }
+    html.app-mobile-layout .page-header p { font-size: .82rem; }
+    html.app-mobile-layout .brand-mark { width: 48px; height: 48px; flex-basis: 48px; border-radius: 15px; }
+    html.app-mobile-layout .profile-hero { min-height: 0; grid-template-columns: 1fr; padding: 20px 18px; }
+    html.app-mobile-layout .profile-person { padding-right: 145px; }
+    html.app-mobile-layout .profile-meta { top: 20px; right: 18px; }
+    html.app-mobile-layout .profile-avatar { width: 64px; height: 64px; flex-basis: 64px; border-radius: 20px; font-size: 1.65rem; }
+    html.app-mobile-layout .profile-quick-link { min-height: 36px; width: auto; margin-top: 0; }
+    html.app-mobile-layout .stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    html.app-mobile-layout .content-grid { grid-template-columns: 1fr; }
+    html.app-mobile-layout .card { padding: 18px; border-radius: 19px; }
+    html.app-mobile-layout .tabla-custom th:nth-child(1),
+    html.app-mobile-layout .tabla-custom td:nth-child(1) { width: 44px; }
+    html.app-mobile-layout .tabla-custom th:last-child { font-size: 0; }
+    html.app-mobile-layout .tabla-custom th:last-child::after { content: 'Victorias'; font-size: .68rem; }
+    html.app-mobile-layout .form-row { grid-template-columns: 1fr; }
+
+    html.app-phone-layout body { padding-inline: 12px; }
+    html.app-phone-layout .btn-back { padding-inline: 14px; }
+    html.app-phone-layout .page-header { gap: 12px; }
+    html.app-phone-layout .page-header p { max-width: 230px; }
+    html.app-phone-layout .profile-person { align-items: flex-start; padding-right: 112px; }
+    html.app-phone-layout .profile-meta { top: 18px; right: 16px; gap: 6px; }
+    html.app-phone-layout .badge-rol,
+    html.app-phone-layout .status-pill { font-size: .65rem; padding: 5px 8px; }
+    html.app-phone-layout .stat-card { padding: 14px 8px; }
+    html.app-phone-layout .stat-card h3 { font-size: .65rem; }
+    html.app-phone-layout .stat-main strong { font-size: 1.3rem; }
+    html.app-phone-layout .stat-detail { font-size: .69rem; }
+    html.app-phone-layout .stat-detail strong { font-size: .76rem; }
+    html.app-phone-layout .profile-name { font-size: 1.35rem; }
+
+    @media (max-width: 760px) {
+        body { padding: 18px 14px 36px; }
+        .container { gap: 16px; }
+        .nav-actions { order: -2; }
+        .btn-back { min-height: 52px; border-radius: 16px; }
+        .nav-actions > *:first-child { flex: 1; }
+        .page-header { padding: 20px 18px; border-radius: 20px; }
+        .page-header h1 { font-size: 1.55rem; }
+        .page-header p { font-size: .82rem; }
+        .brand-mark { width: 48px; height: 48px; flex-basis: 48px; border-radius: 15px; }
+        .profile-hero { min-height: 0; grid-template-columns: 1fr; padding: 20px 18px; }
+        .profile-person { padding-right: 145px; }
+        .profile-meta { top: 20px; right: 18px; }
+        .profile-avatar { width: 64px; height: 64px; flex-basis: 64px; border-radius: 20px; font-size: 1.65rem; }
+        .profile-quick-link { min-height: 36px; width: auto; margin-top: 0; }
+        .stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .content-grid { grid-template-columns: 1fr; }
+        .card { padding: 18px; border-radius: 19px; }
+        .tabla-custom th:nth-child(1), .tabla-custom td:nth-child(1) { width: 44px; }
+        .tabla-custom th:last-child { font-size: 0; }
+        .tabla-custom th:last-child::after { content: 'Victorias'; font-size: .68rem; }
+        .form-row { grid-template-columns: 1fr; }
+    }
+
+    @media (max-width: 430px) {
+        body { padding-inline: 12px; }
+        .btn-back { padding-inline: 14px; }
+        .theme-button { min-width: 112px; flex: 0 0 auto; }
+        .page-header { gap: 12px; }
+        .page-header p { max-width: 230px; }
+        .profile-person { align-items: flex-start; }
+        .profile-person { padding-right: 112px; }
+        .profile-meta { top: 18px; right: 16px; gap: 6px; }
+        .badge-rol, .status-pill { font-size: .65rem; padding: 5px 8px; }
+        .stat-card { padding: 14px 8px; }
+        .stat-card h3 { font-size: .65rem; }
+        .stat-main strong { font-size: 1.3rem; }
+        .stat-detail { font-size: .69rem; }
+        .stat-detail strong { font-size: .76rem; }
+        .profile-name { font-size: 1.35rem; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; }
+    }
+    </style>
+
+    <!-- Ajuste exclusivo para iPhone/iPad: respeta notch, Dynamic Island y barra inferior
+         sin cambiar el diseño de Android ni escritorio. -->
+    <script id="ios-safe-area-fix">
+        (function () {
+            const esIOS =
+                /iPhone|iPad|iPod/i.test(navigator.userAgent) ||
+                (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
+            if (!esIOS) return;
+
+            document.documentElement.classList.add('ios-safe-area');
+
+            function aplicarSafeAreaIOS() {
+                const body = document.body;
+                if (!body) return;
+
+                if (body.dataset.iosSafeAreaCapturada !== '1') {
+                    body.dataset.iosPaddingTop = body.style.paddingTop || '';
+                    body.dataset.iosPaddingRight = body.style.paddingRight || '';
+                    body.dataset.iosPaddingBottom = body.style.paddingBottom || '';
+                    body.dataset.iosPaddingLeft = body.style.paddingLeft || '';
+                    body.dataset.iosSafeAreaCapturada = '1';
+                }
+
+                body.style.paddingTop = body.dataset.iosPaddingTop;
+                body.style.paddingRight = body.dataset.iosPaddingRight;
+                body.style.paddingBottom = body.dataset.iosPaddingBottom;
+                body.style.paddingLeft = body.dataset.iosPaddingLeft;
+
+                const estilos = getComputedStyle(body);
+
+                body.style.paddingTop =
+                    `calc(${estilos.paddingTop} + env(safe-area-inset-top, 0px))`;
+                body.style.paddingRight =
+                    `calc(${estilos.paddingRight} + env(safe-area-inset-right, 0px))`;
+                body.style.paddingBottom =
+                    `calc(${estilos.paddingBottom} + env(safe-area-inset-bottom, 0px))`;
+                body.style.paddingLeft =
+                    `calc(${estilos.paddingLeft} + env(safe-area-inset-left, 0px))`;
+            }
+
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', aplicarSafeAreaIOS, { once: true });
+            } else {
+                aplicarSafeAreaIOS();
+            }
+
+            window.addEventListener('orientationchange', function () {
+                window.setTimeout(aplicarSafeAreaIOS, 180);
+            });
+        })();
+    </script>
+
+</head>
+<body>
+
+<div class="container">
+    <nav class="nav-actions" aria-label="Navegación del perfil">
+        <a href="lobby.html" class="btn-back">← Volver al lobby</a>
+        <button type="button" id="theme-toggle" onclick="cambiarTema()" class="btn-back theme-button" title="Cambiar modo de color">
+            <span class="theme-icon" aria-hidden="true">🌙</span>
+            <span class="theme-label">Oscuro</span>
+        </button>
+    </nav>
+
+    <div id="error-box" class="error-banner hidden"></div>
+    <div id="success-box" class="success-banner hidden"></div>
+
+    <section class="card profile-hero" aria-labelledby="profile-display-name">
+        <div class="profile-person">
+            <div id="profile-avatar" class="profile-avatar" aria-hidden="true">J</div>
+            <div>
+                <h2 id="profile-display-name" class="profile-name">Cargando perfil...</h2>
+                <p id="profile-display-username" class="profile-alias">@usuario</p>
+                <div class="profile-meta">
+                    <span id="badge-rol-usuario" class="badge-rol badge-jugador">Jugador</span>
+                    <span class="status-pill">Perfil activo</span>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <div id="badges-section" class="badges-container hidden"></div>
+
+    <section class="card" aria-labelledby="titulo-rendimiento">
+        <div class="section-title">
+            <span id="titulo-rendimiento">Resumen de rendimiento</span>
+            <a href="galardones.html" class="btn-back profile-quick-link">🏆 Ver galardones</a>
+        </div>
+        <div class="stats-grid">
+            <div class="stat-card">
+                <h3>Rankings</h3>
+                <div class="stat-main">
+                    <span>General</span>
+                    <strong id="stat-ranking">#--</strong>
+                </div>
+                <div class="stat-details">
+                    <div class="stat-detail"><span>Ranking Elo</span><strong id="stat-ranking-elo">#--</strong></div>
+                    <div class="stat-detail"><span>Puntuación Elo</span><strong id="stat-elo-puntos">-- pts</strong></div>
+                    <div class="stat-detail"><span>Nivel</span><strong id="stat-elo-nivel">--</strong></div>
+                </div>
+            </div>
+            <div class="stat-card">
+                <h3>Partidas</h3>
+                <div class="stat-main">
+                    <span>Total</span>
+                    <strong id="stat-jugadas">0</strong>
+                </div>
+                <div class="stat-details">
+                    <div class="stat-detail"><span>Ganadas</span><strong id="stat-ganadas" class="good">0</strong></div>
+                    <div class="stat-detail"><span>Perdidas</span><strong id="stat-perdidas" class="bad">0</strong></div>
+                    <div class="stat-detail"><span>Efectividad</span><strong id="stat-eficiencia" class="good">0%</strong></div>
+                </div>
+            </div>
+            <div class="stat-card">
+                <h3>Rachas</h3>
+                <div class="stat-main">
+                    <span>Actual</span>
+                    <strong id="stat-racha-actual">0</strong>
+                </div>
+                <div class="stat-details">
+                    <div class="stat-detail"><span>Mejor racha</span><strong id="stat-racha-maxima" class="warm">0</strong></div>
+                    <div class="stat-detail"><span>Estado</span><strong id="stat-racha-estado">Sin racha</strong></div>
+                </div>
+            </div>
+            <div class="stat-card">
+                <h3>Lisas</h3>
+                <div class="stat-main">
+                    <span>Balance</span>
+                    <strong id="stat-balance-lisas">0</strong>
+                </div>
+                <div class="stat-details">
+                    <div class="stat-detail"><span>A favor</span><strong id="stat-lisas-dadas" class="good">0</strong></div>
+                    <div class="stat-detail"><span>En contra</span><strong id="stat-lisas-recibidas" class="bad">0</strong></div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <div class="content-grid">
+        <section class="card" aria-labelledby="titulo-parejas">
+            <div class="section-title">
+                <span id="titulo-parejas">🤝 Tus mejores parejas</span>
+                <span class="section-subtitle">Top 3</span>
+            </div>
+            <table class="tabla-custom">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Compañero</th>
+                        <th style="text-align: right;">Partidas ganadas</th>
+                    </tr>
+                </thead>
+                <tbody id="tabla-top-parejas">
+                    <tr><td colspan="3" style="color: var(--text-muted); text-align: center;">Cargando estadísticas...</td></tr>
+                </tbody>
+            </table>
+        </section>
+
+        <section class="card" aria-labelledby="titulo-cuenta">
+            <div class="section-title">
+                <span id="titulo-cuenta">⚙️ Cuenta y seguridad</span>
+                <span class="section-subtitle">Solo tú puedes editar</span>
+            </div>
+
+            <div class="settings-stack">
+                <details class="settings-panel" open>
+                    <summary>Editar datos personales</summary>
+                    <div class="settings-content">
+                        <form onsubmit="actualizarPerfil(event)" class="form-grid">
+                            <div class="form-row">
+                                <div>
+                                    <label for="input-nombre-completo">Nombre completo</label>
+                                    <input type="text" id="input-nombre-completo" placeholder="Tu nombre completo..." required>
+                                </div>
+                                <div>
+                                    <label for="input-username">Nombre de usuario / alias</label>
+                                    <input type="text" id="input-username" placeholder="Tu alias en el juego..." required>
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div>
+                                    <label for="input-fnacimiento">Fecha de nacimiento</label>
+                                    <input type="date" id="input-fnacimiento">
+                                </div>
+                                <div>
+                                    <label for="input-email">Correo electrónico</label>
+                                    <input type="email" id="input-email" disabled style="opacity: .68; cursor: not-allowed;">
+                                </div>
+                            </div>
+                            <button type="submit" class="btn btn-green">Guardar cambios</button>
+                        </form>
+                    </div>
+                </details>
+
+                <details class="settings-panel">
+                    <summary>Cambiar contraseña</summary>
+                    <div class="settings-content">
+                        <form onsubmit="cambiarPassword(event)" class="form-grid">
+                            <div>
+                                <label for="input-new-pass">Nueva contraseña</label>
+                                <input type="password" id="input-new-pass" placeholder="Mínimo 6 caracteres" required minlength="6" autocomplete="new-password">
+                            </div>
+                            <button type="submit" class="btn">Actualizar contraseña</button>
+                        </form>
+                    </div>
+                </details>
+            </div>
+        </section>
+    </div>
+</div>
+
+<script>
+    function cambiarTema() {
+        const html = document.documentElement;
+        html.classList.toggle('light-mode');
+        const currentTheme = html.classList.contains('light-mode') ? 'light' : 'dark';
+        localStorage.setItem('theme', currentTheme);
+        actualizarBotonTema();
+    }
+
+    function actualizarBotonTema() {
+        const boton = document.getElementById('theme-toggle');
+        if (!boton) return;
+
+        const modoClaro = document.documentElement.classList.contains('light-mode');
+        const icono = boton.querySelector('.theme-icon');
+        const etiqueta = boton.querySelector('.theme-label');
+        if (icono) icono.textContent = modoClaro ? '☀️' : '🌙';
+        if (etiqueta) etiqueta.textContent = modoClaro ? 'Claro' : 'Oscuro';
+        boton.setAttribute('aria-label', modoClaro ? 'Cambiar a modo oscuro' : 'Cambiar a modo claro');
+        boton.setAttribute('title', modoClaro ? 'Cambiar a modo oscuro' : 'Cambiar a modo claro');
+    }
+
+    function mostrarError(msj) {
+        const box = document.getElementById('error-box');
+        const sBox = document.getElementById('success-box');
+        if(sBox) sBox.classList.add('hidden');
+        if (box) {
+            box.innerText = msj;
+            box.classList.remove('hidden');
+        }
+    }
+
+    function mostrarExito(msj) {
+        const box = document.getElementById('success-box');
+        const eBox = document.getElementById('error-box');
+        if(eBox) eBox.classList.add('hidden');
+        if (box) {
+            box.innerText = msj;
+            box.classList.remove('hidden');
+        }
+    }
+
+    const SUPABASE_URL = 'https://kzbslfwupzwczmjqfjem.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt6YnNsZnd1cHp3Y3ptanFmamVtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODcxNDI1MzksImV4cCI6MjEwMjcxODUzOX0.qeeh2FV3zKRet-jRMVvJUwBm9jYHsLbWSYWIao574qc';
+
+    const sbClient = window.supabase
+        ? (window.supabaseClient || window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY))
+        : null;
+
+    if (!window.supabaseClient && sbClient) {
+        window.supabaseClient = sbClient;
+    }
+    let usuarioIdActual = null;
+    let cachePerfiles = {};
+    let perfilesDetalle = [];
+    let perfilCachePintado = false;
+    let estadisticasCachePintadas = false;
+
+    document.addEventListener('DOMContentLoaded', () => {
+        ajustarEscalaAppInstalada();
+        let temporizadorEscala;
+        const reajustarEscala = () => {
+            window.clearTimeout(temporizadorEscala);
+            temporizadorEscala = window.setTimeout(ajustarEscalaAppInstalada, 120);
+        };
+        window.addEventListener('resize', reajustarEscala);
+        window.addEventListener('orientationchange', reajustarEscala);
+
+        actualizarBotonTema();
+
+        // Pintar primero el perfil, estadísticas y galardones guardados.
+        intentarCargaInstantaneaDesdeCache();
+
+        if (!sbClient) {
+            if (navigator.onLine === false) return;
+            window.location.href = 'index.html';
+            return;
+        }
+
+        if (navigator.onLine === false) return;
+
+        // Sincronización en segundo plano con Supabase.
+        verificarSesionYActualizar();
+    });
+
+    function intentarCargaInstantaneaDesdeCache() {
+        const storageKey = Object.keys(localStorage).find(k => k.startsWith('sb-') && k.endsWith('-auth-token'));
+        if (!storageKey) return;
+
+        try {
+            const sessionData = JSON.parse(localStorage.getItem(storageKey));
+            if (!sessionData || !sessionData.user || !sessionData.user.id) return;
+
+            usuarioIdActual = sessionData.user.id;
+            document.getElementById('input-email').value = sessionData.user.email || '';
+
+            // Cargar perfiles desde caché global
+            const cachedPerfiles = localStorage.getItem('domino_cache_perfiles');
+            if (cachedPerfiles) {
+                try { cachePerfiles = JSON.parse(cachedPerfiles); } catch(e) {}
+            }
+
+            // Cargar perfil específico del usuario desde caché
+            const cachedPerfilUser = localStorage.getItem('domino_cache_perfil_' + usuarioIdActual);
+            let perfilObj = null;
+            if (cachedPerfilUser) {
+                try {
+                    perfilObj = JSON.parse(cachedPerfilUser);
+                    aplicarDatosPerfilEnUI(perfilObj);
+                    perfilCachePintado = true;
+                } catch(e) {}
+            }
+
+            // Cargar mesas y estadísticas / galardones desde caché
+            const cachedMesas = localStorage.getItem('domino_cache_mesas_manos_' + usuarioIdActual);
+            if (cachedMesas) {
+                try {
+                    const parsed = JSON.parse(cachedMesas);
+                    if (parsed && parsed.mesas) {
+                        calcularEstadisticasYRanking(parsed.mesas, usuarioIdActual);
+                        estadisticasCachePintadas = true;
+                        
+                        // Si tenemos el perfil y las mesas cacheadas, evaluamos los distintivos al instante
+                        if (perfilObj) {
+                            verificarDistintivosPerfil(perfilObj, parsed.mesas);
+                        }
+                    }
+                } catch(e) {}
+            }
+        } catch(e) {
+            console.error('Error al leer caché inicial:', e);
+        }
+    }
+
+    function aplicarDatosPerfilEnUI(perfil) {
+        if (!perfil) return;
+        const nombreCompleto = perfil.nombre_completo || perfil.username || 'Jugador';
+        const username = perfil.username || 'sin_usuario';
+        document.getElementById('input-nombre-completo').value = perfil.nombre_completo || '';
+        document.getElementById('input-username').value = perfil.username || '';
+        document.getElementById('profile-display-name').textContent = nombreCompleto;
+        document.getElementById('profile-display-username').textContent = '@' + username.replace(/^@/, '');
+        document.getElementById('profile-avatar').textContent = nombreCompleto.trim().charAt(0).toUpperCase() || 'J';
+        
+        if (perfil.fecha_nacimiento) {
+            document.getElementById('input-fnacimiento').value = perfil.fecha_nacimiento.substring(0, 10);
+        } else {
+            document.getElementById('input-fnacimiento').value = '';
+        }
+        
+        const badge = document.getElementById('badge-rol-usuario');
+        const rol = (perfil.rol || 'jugador').toLowerCase();
+        badge.innerText = rol.toUpperCase();
+        if (rol === 'admin') badge.className = 'badge-rol badge-admin';
+        else if (rol === 'super_admin' || rol === 'superadmin') badge.className = 'badge-rol badge-superadmin';
+        else badge.className = 'badge-rol badge-jugador';
+    }
+
+    async function verificarSesionYActualizar() {
+        try {
+            const { data: { session }, error: sesionError } = await sbClient.auth.getSession();
+            if (sesionError || !session || !session.user) {
+                window.location.href = 'index.html';
+                return;
+            }
+
+            usuarioIdActual = session.user.id;
+            await cargarPerfilesConCache();
+            await cargarDatosUsuarioAutenticado();
+            await cargarMesasYEstadisticasConCache();
+        } catch (e) {
+            console.error('Error de autenticación:', e);
+        }
+    }
+
+    async function cargarPerfilesConCache() {
+        const { data, error } = await sbClient.from('perfiles').select('*');
+
+        if (!error && data) {
+            perfilesDetalle = data;
+            cachePerfiles = {};
+            data.forEach(p => {
+                cachePerfiles[p.id] = p.username || p.nombre_completo || 'Jugador';
+            });
+            localStorage.setItem('domino_cache_perfiles', JSON.stringify(cachePerfiles));
+            return;
+        }
+
+        if (typeof window.obtenerPerfilesCache === 'function') {
+            cachePerfiles = await window.obtenerPerfilesCache(sbClient);
+        }
+    }
+
+    async function cargarDatosUsuarioAutenticado() {
+        try {
+            const { data: { session } } = await sbClient.auth.getSession();
+            if (!session || !session.user) return;
+
+            const user = session.user;
+            document.getElementById('input-email').value = user.email || '';
+
+            let { data: perfil } = await sbClient.from('perfiles').select('*').eq('id', user.id).maybeSingle();
+            if (!perfil) {
+                const resAlt = await sbClient.from('perfiles').select('*').eq('username', user.id).maybeSingle();
+                perfil = resAlt.data;
+            }
+
+            if (!perfil) {
+                const aliasDefault = user.email.split('@')[0];
+                const nuevoPerfil = {
+                    id: user.id,
+                    nombre_completo: user.user_metadata?.full_name || aliasDefault,
+                    username: aliasDefault,
+                    rol: 'jugador'
+                };
+                const { data: inserted } = await sbClient.from('perfiles').insert([nuevoPerfil]).select().single();
+                if (inserted) perfil = inserted;
+            }
+
+            if (perfil) {
+                const cachePerfilKey = 'domino_cache_perfil_' + user.id;
+                const firmaPerfilNueva = JSON.stringify(perfil);
+                const firmaPerfilGuardada = localStorage.getItem(cachePerfilKey) || '';
+                if (!perfilCachePintado || firmaPerfilNueva !== firmaPerfilGuardada) {
+                    localStorage.setItem(cachePerfilKey, firmaPerfilNueva);
+                    aplicarDatosPerfilEnUI(perfil);
+                    perfilCachePintado = true;
+                }
+                
+                // Cargar mesas actuales para refrescar galardones con datos frescos
+                const cacheKey = 'domino_cache_mesas_manos_' + usuarioIdActual;
+                const cachedMesas = localStorage.getItem(cacheKey);
+                if (cachedMesas) {
+                    try {
+                        const parsed = JSON.parse(cachedMesas);
+                        if (parsed && parsed.mesas) {
+                            verificarDistintivosPerfil(perfil, parsed.mesas);
+                        }
+                    } catch(e) {}
+                }
+            }
+        } catch (e) {
+            console.error('Error cargando perfil:', e);
+        }
+    }
+
+    async function cargarMesasYEstadisticasConCache() {
+        const cacheKey = 'domino_cache_mesas_manos_' + usuarioIdActual;
+        try {
+            const { data: mesas, error: errMesas } = await sbClient
+                .from('mesas')
+                .select('*, manos(puntos_pareja1, puntos_pareja2, anulada, fecha_hora)');
+
+            if (!errMesas && mesas) {
+                let firmaMesasGuardada = '';
+                try {
+                    const cacheAnterior = JSON.parse(localStorage.getItem(cacheKey) || 'null');
+                    firmaMesasGuardada = JSON.stringify(cacheAnterior?.mesas || []);
+                } catch (e) {}
+                const firmaMesasNueva = JSON.stringify(mesas);
+                const huboCambios = firmaMesasNueva !== firmaMesasGuardada;
+
+                if (!estadisticasCachePintadas || huboCambios) {
+                    localStorage.setItem(cacheKey, JSON.stringify({ mesas: mesas, time: Date.now() }));
+                    calcularEstadisticasYRanking(mesas, usuarioIdActual);
+                    estadisticasCachePintadas = true;
+                }
+
+                // Refrescar galardones con datos actualizados de Supabase
+                const cachedPerfilUser = localStorage.getItem('domino_cache_perfil_' + usuarioIdActual);
+                if (cachedPerfilUser && huboCambios) {
+                    verificarDistintivosPerfil(JSON.parse(cachedPerfilUser), mesas);
+                }
+            }
+        } catch (e) {
+            console.error('Error al sincronizar mesas:', e);
+        }
+    }
+
+    // ==========================================
+    // VERIFICACIÓN DE GALARDONES (Cumple, On Fire, Jugador del Mes)
+    // ==========================================
+    function verificarDistintivosPerfil(perfil, mesas) {
+        const contenedorBadges = document.getElementById('badges-section');
+        let badgesHtml = '';
+        const hoy = new Date();
+
+        // 1. Galardón de Cumpleaños
+        if (perfil.fecha_nacimiento) {
+            const partes = perfil.fecha_nacimiento.substring(0, 10).split('-');
+            if (partes.length >= 3) {
+                const mesCumple = parseInt(partes[1]) - 1;
+                const diaCumple = parseInt(partes[2]);
+                
+                let fechaCumpleEsteAno = new Date(hoy.getFullYear(), mesCumple, diaCumple);
+                let inicioRango = new Date(fechaCumpleEsteAno);
+                inicioRango.setDate(inicioRango.getDate() - 3);
+                let finRango = new Date(fechaCumpleEsteAno);
+                finRango.setDate(finRango.getDate() + 4);
+
+                if (hoy >= inicioRango && hoy <= finRango) {
+                    badgesHtml += `
+                        <div class="profile-badge-card badge-card-cumple">
+                            <div class="badge-icon">🎉</div>
+                            <div class="badge-info">
+                                <h4>Cumpleañero de la Semana</h4>
+                                <p>¡Feliz semana de cumpleaños! Estás celebrando tu día especial en la comunidad.</p>
+                            </div>
+                        </div>`;
+                }
+            }
+        }
+
+        // 2. Galardón On Fire & 3. Jugador del Mes (Calculados a partir de las mesas/manos provistas)
+        if (mesas && mesas.length > 0) {
+            let todasLasManos = [];
+            mesas.forEach(m => {
+                if (m.manos && Array.isArray(m.manos)) {
+                    m.manos.forEach(mano => {
+                        todasLasManos.push({ ...mano, mesas: m });
+                    });
+                }
+            });
+
+            const userId = perfil.id || perfil.username;
+
+            // Evaluar On Fire
+            if (calcularEsOnFireConManos(todasLasManos, userId)) {
+                badgesHtml += `
+                    <div class="profile-badge-card badge-card-onfire">
+                        <div class="badge-icon">🔥</div>
+                        <div class="badge-info">
+                            <h4>Jugador On Fire</h4>
+                            <p>Estás en llamas esta semana con el mejor rendimiento y racha de victorias.</p>
+                        </div>
+                    </div>`;
+            }
+
+            // Evaluar Jugador del Mes
+            if (calcularEsJugadorDelMesConManos(todasLasManos, userId)) {
+                badgesHtml += `
+                    <div class="profile-badge-card badge-card-mes">
+                        <div class="badge-icon">⭐</div>
+                        <div class="badge-info">
+                            <h4>Jugador del Mes</h4>
+                            <p>Reconocido como el jugador más destacado y constante de todo el mes actual.</p>
+                        </div>
+                    </div>`;
+            }
+        }
+
+        if (badgesHtml !== '') {
+            contenedorBadges.innerHTML = badgesHtml;
+            contenedorBadges.classList.remove('hidden');
+        } else {
+            contenedorBadges.classList.add('hidden');
+        }
+    }
+
+    function calcularEsOnFireConManos(manos, userId) {
+        let statsOnFire = {};
+        manos.forEach(m => {
+            if (m.anulada || !m.fecha_hora) return;
+            const fechaMano = new Date(m.fecha_hora);
+            const diaSemana = fechaMano.getDay(); 
+            const hora = fechaMano.getHours();
+            if (!((diaSemana === 4 && hora >= 0 && hora < 7) || (diaSemana === 5 && hora >= 0 && hora < 7))) return;
+
+            const mesa = m.mesas;
+            if (!mesa) return;
+
+            const p1 = mesa.jugador1_id, p2 = mesa.jugador2_id, p3 = mesa.jugador3_id, p4 = mesa.jugador4_id;
+            const pts1 = m.puntos_pareja1 || 0;
+            const pts2 = m.puntos_pareja2 || 0;
+            let ganadora = (pts1 > pts2) ? 1 : ((pts2 > pts1) ? 2 : (m.ganador_pareja || 0));
+
+            [p1, p3].forEach(id => {
+                if (!id) return;
+                if (!statsOnFire[id]) statsOnFire[id] = { vic: 0, manos: 0 };
+                statsOnFire[id].manos++;
+                if (ganadora === 1) statsOnFire[id].vic++;
+            });
+            [p2, p4].forEach(id => {
+                if (!id) return;
+                if (!statsOnFire[id]) statsOnFire[id] = { vic: 0, manos: 0 };
+                statsOnFire[id].manos++;
+                if (ganadora === 2) statsOnFire[id].vic++;
+            });
+        });
+
+        let candidatos = [];
+        Object.keys(statsOnFire).forEach(id => {
+            const data = statsOnFire[id];
+            const eficiencia = data.manos > 0 ? (data.vic / data.manos) : 0;
+            if (data.manos >= 8 && eficiencia >= 0.75) candidatos.push({ id, eficiencia });
+        });
+        candidatos.sort((a, b) => b.eficiencia - a.eficiencia);
+        return candidatos.length > 0 && candidatos[0].id === userId;
+    }
+
+    function calcularEsJugadorDelMesConManos(manos, userId) {
+        let mesesDisponibles = {};
+        manos.forEach(m => {
+            if (m.anulada || !m.fecha_hora) return;
+            const f = new Date(m.fecha_hora);
+            const clave = `${f.getFullYear()}-${f.getMonth()}`;
+            mesesDisponibles[clave] = (mesesDisponibles[clave] || 0) + 1;
+        });
+
+        const ahora = new Date();
+        let anoTarget = ahora.getFullYear();
+        let mesTarget = ahora.getMonth();
+        let claveActual = `${anoTarget}-${mesTarget}`;
+
+        if (!mesesDisponibles[claveActual]) {
+            let keys = Object.keys(mesesDisponibles).sort().reverse();
+            if (keys.length > 0) {
+                const partes = keys[0].split('-');
+                anoTarget = parseInt(partes[0]);
+                mesTarget = parseInt(partes[1]);
+            }
+        }
+
+        let statsMes = {};
+        manos.forEach(m => {
+            if (m.anulada || !m.fecha_hora) return;
+            const fechaMano = new Date(m.fecha_hora);
+            if (fechaMano.getFullYear() !== anoTarget || fechaMano.getMonth() !== mesTarget) return;
+
+            const mesa = m.mesas;
+            if (!mesa) return;
+
+            const p1 = mesa.jugador1_id, p2 = mesa.jugador2_id, p3 = mesa.jugador3_id, p4 = mesa.jugador4_id;
+            const pts1 = m.puntos_pareja1 || 0;
+            const pts2 = m.puntos_pareja2 || 0;
+            let ganadora = (pts1 > pts2) ? 1 : ((pts2 > pts1) ? 2 : (m.ganador_pareja || 0));
+
+            [p1, p3].forEach(id => {
+                if (!id) return;
+                if (!statsMes[id]) statsMes[id] = { vic: 0, total: 0 };
+                statsMes[id].total++;
+                if (ganadora === 1) statsMes[id].vic++;
+            });
+            [p2, p4].forEach(id => {
+                if (!id) return;
+                if (!statsMes[id]) statsMes[id] = { vic: 0, total: 0 };
+                statsMes[id].total++;
+                if (ganadora === 2) statsMes[id].vic++;
+            });
+        });
+
+        let lista = [];
+        Object.keys(statsMes).forEach(id => {
+            const d = statsMes[id];
+            const ef = d.total > 0 ? (d.vic / d.total) : 0;
+            if (d.total >= 1) lista.push({ id, vic: d.vic, ef });
+        });
+
+        lista.sort((a, b) => b.vic - a.vic || b.ef - a.ef);
+        return lista.length > 0 && lista[0].id === userId;
+    }
+
+    async function actualizarPerfil(e) {
+        e.preventDefault();
+
+        const nuevoNombreCompleto =
+            document.getElementById('input-nombre-completo').value.trim();
+
+        const nuevoUsername =
+            document.getElementById('input-username').value.trim();
+
+        const nuevaFnacimiento =
+            document.getElementById('input-fnacimiento').value || null;
+
+        if (!usuarioIdActual) {
+            mostrarError('No se pudo identificar al usuario actual.');
+            return;
+        }
+
+        if (!nuevoNombreCompleto) {
+            mostrarError('Debes ingresar tu nombre completo.');
+            return;
+        }
+
+        if (!nuevoUsername) {
+            mostrarError('Debes ingresar un nombre de usuario.');
+            return;
+        }
+
+        const { data: perfilActualizado, error } = await sbClient.rpc(
+            'actualizar_mi_perfil',
+            {
+                p_nombre_completo: nuevoNombreCompleto,
+                p_username: nuevoUsername,
+                p_fecha_nacimiento: nuevaFnacimiento
+            }
+        );
+
+        if (error) {
+            console.error('Error al actualizar perfil:', error);
+            mostrarError(
+                'Error al actualizar perfil: ' + error.message
+            );
+            return;
+        }
+
+        mostrarExito('¡Información de perfil actualizada con éxito!');
+
+        // Actualizar caché
+        if (perfilActualizado) {
+
+            cachePerfiles[usuarioIdActual] =
+                perfilActualizado.username ||
+                perfilActualizado.nombre_completo;
+
+            localStorage.setItem(
+                'domino_cache_perfil_' + usuarioIdActual,
+                JSON.stringify(perfilActualizado)
+            );
+
+            localStorage.setItem(
+                'domino_cache_perfiles',
+                JSON.stringify(cachePerfiles)
+            );
+
+            aplicarDatosPerfilEnUI(perfilActualizado);
+
+            const cachedMesas = localStorage.getItem(
+                'domino_cache_mesas_manos_' + usuarioIdActual
+            );
+
+            let mesasArr = [];
+
+            if (cachedMesas) {
+                try {
+                    const parsed = JSON.parse(cachedMesas);
+                    mesasArr = parsed.mesas || [];
+                } catch (e) {
+                    mesasArr = [];
+                }
+            }
+
+            verificarDistintivosPerfil(
+                perfilActualizado,
+                mesasArr
+            );
+        }
+    }
+
+    async function cambiarPassword(e) {
+        e.preventDefault();
+
+        try {
+            if (!sbClient) {
+                mostrarError('Error: Supabase no está inicializado.');
+                return;
+            }
+
+            const nuevaPass = document.getElementById('input-new-pass').value.trim();
+
+            if (!nuevaPass) {
+                mostrarError('Debes escribir una nueva contraseña.');
+                return;
+            }
+
+            if (nuevaPass.length < 6) {
+                mostrarError('La contraseña debe tener al menos 6 caracteres.');
+                return;
+            }
+
+            // Verificar que existe una sesión activa
+            const { data: sessionData, error: sessionError } =
+                await sbClient.auth.getSession();
+
+            if (sessionError) {
+                console.error('Error de sesión:', sessionError);
+                mostrarError('Error de sesión: ' + sessionError.message);
+                return;
+            }
+
+            if (!sessionData.session) {
+                mostrarError('Tu sesión ha expirado. Inicia sesión nuevamente.');
+                return;
+            }
+
+            // Cambiar contraseña en Supabase Auth
+            const { data, error } = await sbClient.auth.updateUser({
+                password: nuevaPass
+            });
+
+            console.log('Resultado actualización contraseña:', data);
+
+            if (error) {
+                console.error('Error al cambiar contraseña:', error);
+                mostrarError('Error al cambiar contraseña: ' + error.message);
+                return;
+            }
+
+            document.getElementById('input-new-pass').value = '';
+
+            mostrarExito('¡Contraseña actualizada correctamente!');
+
+        } catch (error) {
+            console.error('Error inesperado:', error);
+            mostrarError(
+                'Error inesperado al cambiar contraseña: ' +
+                (error.message || error)
+            );
+        }
+    }
+
+    function aplicarColorRanking(elemento, posicion) {
+        if (!elemento) return;
+        elemento.classList.remove('rank-gold', 'rank-silver', 'rank-bronze');
+        if (posicion === 1) elemento.classList.add('rank-gold');
+        else if (posicion === 2) elemento.classList.add('rank-silver');
+        else if (posicion === 3) elemento.classList.add('rank-bronze');
+    }
+
+    function obtenerColorNivelPerfil(nivel) {
+        const colores = {
+            Novato: '#d97786',
+            Aficionado: '#d99168',
+            Intermedio: '#c5a24f',
+            Avanzado: '#82a968',
+            Experto: '#54a58e',
+            Maestro: '#708fc2'
+        };
+        return colores[nivel] || 'var(--text)';
+    }
+
+    function calcularEstadisticasYRanking(mesas, userId) {
+        let rankingGlobal = {};
+
+        mesas.forEach(m => {
+            const p1 = m.jugador1_id, p2 = m.jugador2_id, p3 = m.jugador3_id, p4 = m.jugador4_id;
+            let pts1 = 0, pts2 = 0;
+            let finalizada = false;
+            let limiteMeta = m.limite_puntos || 200;
+
+            (m.manos || []).forEach(mano => {
+                if (!mano.anulada) {
+                    pts1 += (mano.puntos_pareja1 || 0);
+                    pts2 += (mano.puntos_pareja2 || 0);
+                }
+            });
+
+            if (pts1 >= limiteMeta || pts2 >= limiteMeta) {
+                finalizada = true;
+            }
+
+            if (finalizada) {
+                const ganoPareja1 = pts1 > pts2;
+                const ganoPareja2 = pts2 > pts1;
+
+                [p1, p3].forEach(id => {
+                    if (!id) return;
+                    if (!rankingGlobal[id]) rankingGlobal[id] = { jugadas: 0, ganadas: 0 };
+                    rankingGlobal[id].jugadas++;
+                    if (ganoPareja1) rankingGlobal[id].ganadas++;
+                });
+
+                [p2, p4].forEach(id => {
+                    if (!id) return;
+                    if (!rankingGlobal[id]) rankingGlobal[id] = { jugadas: 0, ganadas: 0 };
+                    rankingGlobal[id].jugadas++;
+                    if (ganoPareja2) rankingGlobal[id].ganadas++;
+                });
+            }
+        });
+
+        let listaRanking = Object.keys(rankingGlobal).map(id => {
+            const data = rankingGlobal[id];
+            const ef = data.jugadas > 0 ? (data.ganadas / data.jugadas) : 0;
+            return { id, ganadas: data.ganadas, jugadas: data.jugadas, ef };
+        });
+
+        listaRanking.sort((a, b) => b.ef - a.ef || b.jugadas - a.jugadas || b.ganadas - a.ganadas);
+
+        let posicionUsuario = listaRanking.findIndex(item => item.id === userId);
+        let textoPosicion = posicionUsuario !== -1 ? `#${posicionUsuario + 1}` : 'Sin Rango';
+        const elementoRankingGeneral = document.getElementById('stat-ranking');
+        elementoRankingGeneral.innerText = textoPosicion;
+        aplicarColorRanking(elementoRankingGeneral, posicionUsuario !== -1 ? posicionUsuario + 1 : null);
+
+        const perfilUsuario = perfilesDetalle.find(p => p.id === userId);
+        const eloUsuario = Number(perfilUsuario?.elo ?? 1200);
+        const rankingElo = perfilesDetalle
+            .filter(p => rankingGlobal[p.id])
+            .map(p => ({ id: p.id, elo: Number(p.elo ?? 1200) }))
+            .sort((a, b) => b.elo - a.elo);
+        const posicionElo = rankingElo.findIndex(item => item.id === userId);
+        let nivelElo = 'Maestro';
+        if (eloUsuario < 1000) nivelElo = 'Novato';
+        else if (eloUsuario <= 1199) nivelElo = 'Aficionado';
+        else if (eloUsuario <= 1399) nivelElo = 'Intermedio';
+        else if (eloUsuario <= 1599) nivelElo = 'Avanzado';
+        else if (eloUsuario <= 1799) nivelElo = 'Experto';
+
+        const elementoRankingElo = document.getElementById('stat-ranking-elo');
+        elementoRankingElo.innerText = posicionElo !== -1 ? `#${posicionElo + 1}` : 'Sin rango';
+        aplicarColorRanking(elementoRankingElo, posicionElo !== -1 ? posicionElo + 1 : null);
+        document.getElementById('stat-elo-puntos').innerText = `${eloUsuario} pts`;
+        const elementoNivelElo = document.getElementById('stat-elo-nivel');
+        elementoNivelElo.innerText = nivelElo;
+        elementoNivelElo.style.color = obtenerColorNivelPerfil(nivelElo);
+
+        let totalJugadas = 0;
+        let totalGanadas = 0;
+        let totalPerdidas = 0;
+        let lisasDadas = 0;
+        let lisasRecibidas = 0;
+        const parejasGanadasConteo = {};
+        const partidasUsuario = [];
+
+        mesas.forEach(m => {
+            const esPareja1 = (m.jugador1_id === userId || m.jugador3_id === userId);
+            const esPareja2 = (m.jugador2_id === userId || m.jugador4_id === userId);
+            if (!esPareja1 && !esPareja2) return;
+            
+            let pts1 = 0, pts2 = 0;
+            let finalizada = false;
+            let limiteMeta = m.limite_puntos || 200;
+
+            (m.manos || []).forEach(mano => {
+                if (!mano.anulada) {
+                    pts1 += (mano.puntos_pareja1 || 0);
+                    pts2 += (mano.puntos_pareja2 || 0);
+                }
+            });
+
+            if (pts1 >= limiteMeta || pts2 >= limiteMeta) finalizada = true;
+
+            if (finalizada) {
+                totalJugadas++;
+                const ganoPareja1 = pts1 > pts2;
+                const ganoPareja2 = pts2 > pts1;
+
+                let usuarioGano = (esPareja1 && ganoPareja1) || (esPareja2 && ganoPareja2);
+                const fechaPartida = (m.manos || []).reduce((ultimaFecha, mano) => {
+                    if (!mano.fecha_hora) return ultimaFecha;
+                    const marcaTiempo = new Date(mano.fecha_hora).getTime();
+                    return Number.isFinite(marcaTiempo) && marcaTiempo > ultimaFecha ? marcaTiempo : ultimaFecha;
+                }, 0);
+                partidasUsuario.push({ fecha: fechaPartida, gano: usuarioGano });
+
+                if (usuarioGano) {
+                    totalGanadas++;
+                    let companeroId = null;
+                    if (esPareja1) {
+                        companeroId = (m.jugador1_id === userId) ? m.jugador3_id : m.jugador1_id;
+                    } else if (esPareja2) {
+                        companeroId = (m.jugador2_id === userId) ? m.jugador4_id : m.jugador2_id;
+                    }
+                    if (companeroId) {
+                        parejasGanadasConteo[companeroId] = (parejasGanadasConteo[companeroId] || 0) + 1;
+                    }
+                } else {
+                    totalPerdidas++;
+                }
+
+                if (esPareja1) {
+                    if (pts1 > 0 && pts2 === 0) lisasDadas++;
+                    if (pts2 > 0 && pts1 === 0) lisasRecibidas++;
+                } else if (esPareja2) {
+                    if (pts2 > 0 && pts1 === 0) lisasDadas++;
+                    if (pts1 > 0 && pts2 === 0) lisasRecibidas++;
+                }
+            }
+        });
+
+        document.getElementById('stat-jugadas').innerText = totalJugadas;
+        document.getElementById('stat-ganadas').innerText = totalGanadas;
+        document.getElementById('stat-perdidas').innerText = totalPerdidas;
+        document.getElementById('stat-eficiencia').innerText = totalJugadas > 0
+            ? `${((totalGanadas / totalJugadas) * 100).toFixed(1)}%`
+            : '0%';
+        document.getElementById('stat-lisas-dadas').innerText = lisasDadas;
+        document.getElementById('stat-lisas-recibidas').innerText = lisasRecibidas;
+        const balanceLisas = lisasDadas - lisasRecibidas;
+        document.getElementById('stat-balance-lisas').innerText = balanceLisas > 0 ? `+${balanceLisas}` : String(balanceLisas);
+
+        partidasUsuario.sort((a, b) => a.fecha - b.fecha);
+        let rachaActual = 0;
+        let rachaMaxima = 0;
+        partidasUsuario.forEach(partida => {
+            rachaActual = partida.gano ? rachaActual + 1 : 0;
+            rachaMaxima = Math.max(rachaMaxima, rachaActual);
+        });
+        document.getElementById('stat-racha-actual').innerText = rachaActual;
+        document.getElementById('stat-racha-maxima').innerText = rachaMaxima;
+        document.getElementById('stat-racha-estado').innerText = rachaActual > 0 ? '🔥 En racha' : 'Sin racha';
+
+        const topParejasArr = Object.entries(parejasGanadasConteo)
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 3);
+
+        const tbodyTop = document.getElementById('tabla-top-parejas');
+        tbodyTop.innerHTML = '';
+
+        if (topParejasArr.length === 0) {
+            tbodyTop.innerHTML = `<tr><td colspan="3" style="color: var(--text-muted); text-align: center;">Aún no hay registros suficientes de victorias en pareja.</td></tr>`;
+            return;
+        }
+
+        topParejasArr.forEach(([compId, victorias], index) => {
+            const nombreComp = cachePerfiles[compId] || 'Jugador';
+            const medalla = index === 0 ? '🥇' : (index === 1 ? '🥈' : '🥉');
+            tbodyTop.innerHTML += `
+                <tr>
+                    <td style="font-weight: bold; font-size: 1rem;">${medalla} #${index + 1}</td>
+                    <td style="font-weight: bold;">${nombreComp}</td>
+                    <td style="text-align: right; font-weight: bold; color: var(--accent-green);">${victorias} victoria${victorias > 1 ? 's' : ''}</td>
+                </tr>
+            `;
+        });
+    }
+</script>
+</body>
+</html>
