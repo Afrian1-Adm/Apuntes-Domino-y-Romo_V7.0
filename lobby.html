@@ -3073,7 +3073,7 @@
 
                 const { jsPDF } = window.jspdf;
                 const doc = new jsPDF({
-                    orientation: 'landscape',
+                    orientation: 'portrait',
                     unit: 'mm',
                     format: 'a4'
                 });
@@ -3139,8 +3139,8 @@
                     margin: { left: margen, right: margen, bottom: 15 },
                     styles: {
                         font: 'helvetica',
-                        fontSize: 9,
-                        cellPadding: 3.2,
+                        fontSize: 8.2,
+                        cellPadding: 2.6,
                         textColor: [30, 41, 59],
                         lineColor: [226, 232, 240],
                         lineWidth: 0.25,
@@ -3157,12 +3157,12 @@
                         fillColor: [248, 250, 252]
                     },
                     columnStyles: {
-                        0: { halign: 'center', cellWidth: 24, fontStyle: 'bold' },
+                        0: { halign: 'center', cellWidth: 20, fontStyle: 'bold' },
                         1: { cellWidth: 'auto', fontStyle: 'bold' },
-                        2: { halign: 'center', cellWidth: 28 },
-                        3: { halign: 'center', cellWidth: 28 },
-                        4: { halign: 'center', cellWidth: 28 },
-                        5: { halign: 'center', cellWidth: 32, fontStyle: 'bold' }
+                        2: { halign: 'center', cellWidth: 25 },
+                        3: { halign: 'center', cellWidth: 25 },
+                        4: { halign: 'center', cellWidth: 25 },
+                        5: { halign: 'center', cellWidth: 29, fontStyle: 'bold' }
                     },
                     didParseCell: function(data) {
                         if (data.section !== 'body') return;
