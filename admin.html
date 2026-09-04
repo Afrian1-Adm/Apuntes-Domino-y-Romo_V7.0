@@ -1,0 +1,2085 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <link rel="manifest" href="manifest.json">
+    <script src="offline-mode.js"></script>
+    <script src="vista-app.js"></script>
+    <meta name="theme-color" content="#f1f5f9">
+    <title>Panel de Administración - Dominó</title>
+    <!-- Script de carga inmediata para evitar parpadeos de tema -->
+    <script>
+        (function() {
+            const savedTheme = localStorage.getItem('theme') || 'dark';
+            if (savedTheme === 'light') {
+                document.documentElement.classList.add('light-mode');
+            }
+        })();
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="app-notifications.js"></script>
+    <style>
+    :root {
+        color-scheme: dark;
+        --bg-color: #0f172a;
+        --card-bg: #152238;
+        --card-inner: #1d2a44;
+        --accent: #60a5fa;
+        --accent-strong: #3b82f6;
+        --accent-green: #34d399;
+        --accent-red: #fb7185;
+        --accent-amber: #fbbf24;
+        --text: #f8fafc;
+        --text-muted: #a9b6ca;
+        --section-title: #e7efff;
+        --border-color: #33445f;
+        --soft-border: rgba(96, 165, 250, 0.22);
+        --soft-shadow: 0 5px 18px rgba(37, 99, 235, 0.13);
+        --header-shadow: 0 5px 18px rgba(37, 99, 235, 0.13);
+        --header-bg: linear-gradient(115deg, rgba(24, 56, 95, 0.82) 0%, rgba(24, 56, 95, 0.82) 72%, rgba(29, 42, 68, 0.96) 100%);
+        --button-bg: linear-gradient(115deg, #18385f 0%, #18385f 72%, #1d2a44 100%);
+        --role-jugador: #7dd3fc;
+        --role-invitado: #fcd34d;
+        --role-admin: #c4b5fd;
+        --role-superadmin: #f9a8d4;
+        --pareja1: #7dd3fc;
+        --pareja2: #fda4af;
+    }
+
+    html.light-mode {
+        color-scheme: light;
+        --bg-color: #fbfcfe;
+        --card-bg: #ffffff;
+        --card-inner: #f8fafc;
+        --accent: #3b82f6;
+        --accent-strong: #1769e8;
+        --accent-green: #059669;
+        --accent-red: #dc2626;
+        --accent-amber: #d97706;
+        --text: #0f1f3d;
+        --text-muted: #6b7890;
+        --section-title: #0f172a;
+        --border-color: #e1e7ef;
+        --soft-border: rgba(23, 105, 232, 0.18);
+        --soft-shadow: 0 5px 18px rgba(37, 99, 235, 0.12);
+        --header-shadow: 0 5px 18px rgba(37, 99, 235, 0.12);
+        --header-bg: #ffffff;
+        --button-bg: linear-gradient(115deg, #dceaff 0%, #dceaff 72%, #f8fbff 100%);
+        --role-jugador: #0284c7;
+        --role-invitado: #c56a08;
+        --role-admin: #7c3aed;
+        --role-superadmin: #c0266d;
+        --pareja1: #0284c7;
+        --pareja2: #dc2626;
+    }
+
+    * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    body {
+        min-height: 100vh;
+        background: var(--bg-color);
+        color: var(--text);
+        padding: 22px 16px 42px;
+        display: flex;
+        justify-content: center;
+        transition: background-color 0.3s, color 0.3s;
+    }
+
+    button, input, select { font: inherit; }
+    button, a { -webkit-tap-highlight-color: transparent; }
+    button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible {
+        outline: 3px solid rgba(59, 130, 246, 0.25);
+        outline-offset: 2px;
+    }
+
+    .container {
+        width: 100%;
+        max-width: 1120px;
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+    }
+
+    .page-header {
+        min-height: 88px;
+        padding: 18px 20px;
+        border-radius: 20px;
+        border: 1px solid var(--soft-border);
+        background: var(--header-bg);
+        box-shadow: var(--header-shadow);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+    }
+
+    .brand { display: flex; align-items: center; gap: 14px; min-width: 0; }
+    .brand img { width: 48px; height: 48px; object-fit: contain; flex: 0 0 auto; }
+    .brand h1 { color: var(--text); font-size: clamp(1.35rem, 3vw, 1.75rem); line-height: 1.1; font-weight: 750; letter-spacing: -0.025em; }
+    .brand p { margin-top: 5px; color: var(--text-muted); font-size: 0.88rem; }
+
+    .page-pill {
+        flex: 0 0 auto;
+        padding: 7px 12px;
+        border-radius: 999px;
+        border: 1px solid var(--soft-border);
+        background: rgba(255, 255, 255, 0.08);
+        color: var(--accent);
+        font-size: 0.8rem;
+        font-weight: 700;
+    }
+
+    html.light-mode .page-pill { background: rgba(255, 255, 255, 0.55); }
+
+    .top-bar { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+    .top-actions { display: flex; gap: 10px; align-items: center; }
+    .btn-back {
+        min-height: 46px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 7px;
+        background: var(--button-bg);
+        color: var(--accent);
+        text-decoration: none;
+        padding: 10px 18px;
+        border-radius: 13px;
+        font-weight: 700;
+        border: 1px solid rgba(96, 165, 250, 0.34);
+        box-shadow: 0 3px 10px rgba(15, 23, 42, 0.04);
+        font-size: 0.88rem;
+        cursor: pointer;
+        transition: transform 0.18s ease, border-color 0.18s ease, filter 0.18s ease;
+    }
+    .btn-back:hover { transform: translateY(-1px); border-color: var(--accent); filter: brightness(1.025); }
+
+    .lobby-button {
+        background: var(--card-bg);
+        border-color: var(--border-color);
+        box-shadow: var(--soft-shadow);
+    }
+    html.light-mode .lobby-button { background: #ffffff; }
+
+    .theme-toggle { min-width: 112px; }
+    .theme-toggle .theme-icon {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 22px;
+        height: 22px;
+        border-radius: 50%;
+        background: rgba(96, 165, 250, 0.12);
+        transition: transform 0.22s ease, background-color 0.22s ease;
+    }
+    .theme-toggle:hover .theme-icon { transform: rotate(14deg) scale(1.06); }
+    .theme-toggle[data-mode="light"] .theme-icon { background: rgba(245, 158, 11, 0.16); }
+
+    .admin-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+    .full-card { grid-column: 1 / -1; }
+
+    .card {
+        min-width: 0;
+        background: var(--card-bg);
+        border-radius: 18px;
+        padding: 18px;
+        border: 1px solid var(--border-color);
+        box-shadow: var(--soft-shadow);
+    }
+
+    .error-banner {
+        background: rgba(239, 68, 68, 0.1);
+        border: 1px solid rgba(239, 68, 68, 0.35);
+        color: var(--accent-red);
+        padding: 12px;
+        border-radius: 12px;
+        font-size: 0.85rem;
+        text-align: center;
+        word-break: break-word;
+    }
+
+    .section-title {
+        min-height: 30px;
+        color: var(--section-title);
+        font-size: 1rem;
+        font-weight: 700;
+        margin-bottom: 14px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+    }
+
+    .form-grid { display: flex; flex-direction: column; gap: 10px; }
+    .input-group { display: flex; gap: 10px; }
+
+    input, select {
+        width: 100%;
+        min-height: 44px;
+        padding: 10px 12px;
+        border-radius: 12px;
+        border: 1px solid var(--border-color);
+        background: var(--card-inner);
+        color: var(--text);
+        font-size: 0.9rem;
+        transition: border-color 0.18s ease, box-shadow 0.18s ease;
+    }
+    input:hover, select:hover, input:focus, select:focus { border-color: rgba(96, 165, 250, 0.55); }
+    input:focus, select:focus { box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1); outline: none; }
+    input::placeholder { color: var(--text-muted); }
+
+    .btn {
+        width: 100%;
+        min-height: 44px;
+        padding: 10px 14px;
+        border: 1px solid rgba(96, 165, 250, 0.34);
+        border-radius: 12px;
+        font-weight: 700;
+        cursor: pointer;
+        background: var(--button-bg);
+        color: var(--accent);
+        font-size: 0.92rem;
+        transition: transform 0.18s ease, filter 0.18s ease;
+    }
+    .btn:hover, .btn-export:hover, .btn-icon:hover { transform: translateY(-1px); filter: brightness(1.04); }
+    .btn-green { color: var(--accent-green); border-color: rgba(16, 185, 129, 0.35); }
+
+    .stats-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 14px; }
+    .stat-card { background: var(--card-inner); border: 1px solid var(--border-color); border-radius: 13px; padding: 14px 10px; text-align: center; box-shadow: var(--soft-shadow); }
+    .stat-card h3 { margin: 0; font-size: 0.74rem; color: var(--text-muted); font-weight: 650; }
+    .stat-card p { margin: 7px 0 0; font-size: 1.45rem; line-height: 1; font-weight: 750; color: var(--accent); }
+
+    .filters-container { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 14px; align-items: flex-end; }
+    .filter-group { display: flex; flex-direction: column; gap: 5px; flex: 1; min-width: 130px; }
+    .filter-group label { font-size: 0.74rem; color: var(--text-muted); font-weight: 650; }
+
+    .btn-export {
+        min-height: 44px;
+        background: rgba(16, 185, 129, 0.1);
+        color: var(--accent-green);
+        border: 1px solid rgba(16, 185, 129, 0.34);
+        padding: 10px 14px;
+        border-radius: 12px;
+        font-weight: 700;
+        cursor: pointer;
+        font-size: 0.85rem;
+        transition: transform 0.18s ease, filter 0.18s ease;
+    }
+
+    .table-wrap { width: 100%; overflow-x: auto; scrollbar-width: thin; }
+    .tabla-custom { width: 100%; min-width: 560px; border-collapse: collapse; text-align: left; font-size: 0.83rem; margin-top: 4px; }
+    .tabla-custom th { padding: 11px 9px; color: var(--text-muted); border-bottom: 1px solid var(--border-color); text-align: left; font-size: 0.74rem; text-transform: uppercase; letter-spacing: 0.02em; white-space: nowrap; }
+    .tabla-custom td { padding: 11px 9px; border-bottom: 1px solid var(--border-color); vertical-align: middle; }
+    .tabla-custom tbody tr:last-child td { border-bottom: none; }
+    .tabla-custom tbody tr { transition: background-color 0.16s ease; }
+    .tabla-custom tbody tr:hover { background: rgba(96, 165, 250, 0.035); }
+
+    .history-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .history-table,
+    .users-table { table-layout: fixed; }
+    .history-table th,
+    .history-table td {
+        padding-block: clamp(6px, 0.8vw, 11px);
+        padding-inline: clamp(4px, 0.65vw, 9px);
+    }
+    #cuerpo-tabla-historial .history-actions .action-btns {
+        flex-wrap: nowrap;
+        gap: 3px;
+    }
+    #cuerpo-tabla-historial .history-actions .btn-icon {
+        min-width: 32px;
+        min-height: 32px;
+        padding: 4px 7px;
+    }
+    .users-table th:last-child { text-align: left !important; }
+    .users-table .action-btns { justify-content: flex-start; }
+
+    .solicitudes-wrap { overflow-x: hidden; }
+    .solicitudes-table {
+        min-width: 0;
+        table-layout: fixed;
+    }
+    .solicitudes-table th:nth-child(1) { width: 34%; }
+    .solicitudes-table th:nth-child(2) { width: 22%; }
+    .solicitudes-table th:nth-child(3) { width: 44%; }
+    .solicitudes-table td { overflow-wrap: anywhere; }
+    .solicitudes-table .action-btns {
+        min-width: 0;
+        justify-content: flex-end;
+        flex-wrap: wrap;
+    }
+    .user-name { font-weight: 700; display: flex; align-items: center; }
+    .user-handle { margin: 3px 0 0 16px; color: var(--text-muted); font-size: 0.75rem; }
+    .history-date-main, .history-time { display: block; }
+    .history-time { margin-top: 2px; color: var(--text-muted); font-size: 0.75rem; }
+
+    .badge-rol { padding: 4px 8px; border-radius: 999px; font-size: 0.7rem; font-weight: 700; text-transform: uppercase; display: inline-block; white-space: nowrap; }
+    .badge-jugador { background: rgba(56, 189, 248, 0.12); color: var(--role-jugador); border: 1px solid rgba(56, 189, 248, 0.32); }
+    .badge-invitado { background: rgba(251, 191, 36, 0.12); color: var(--role-invitado); border: 1px solid rgba(251, 191, 36, 0.32); }
+    .badge-admin { background: rgba(168, 85, 247, 0.12); color: var(--role-admin); border: 1px solid rgba(168, 85, 247, 0.32); }
+    .badge-superadmin { background: rgba(236, 72, 153, 0.12); color: var(--role-superadmin); border: 1px solid rgba(236, 72, 153, 0.32); }
+    .badge-pendiente { background: rgba(245, 158, 11, 0.12); color: var(--accent-amber); border: 1px solid rgba(245, 158, 11, 0.32); }
+    .badge-inactivo { background: rgba(148, 163, 184, 0.12); color: var(--text-muted); border: 1px solid rgba(148, 163, 184, 0.28); }
+
+    .badge-modalidad { background: rgba(59, 130, 246, 0.12); color: var(--accent); border: 1px solid rgba(59, 130, 246, 0.25); padding: 3px 7px; border-radius: 999px; font-weight: 700; font-size: 0.72rem; white-space: nowrap; }
+    .badge-equipo { padding: 3px 7px; border-radius: 999px; font-size: 0.72rem; font-weight: 700; white-space: nowrap; }
+    .badge-equipo.a { background: rgba(16, 185, 129, 0.12); color: var(--accent-green); }
+    .badge-equipo.b { background: rgba(239, 68, 68, 0.12); color: var(--accent-red); }
+    .badge-equipo.secondary { background: rgba(148, 163, 184, 0.12); color: var(--text-muted); }
+    .badge-lisa { background: rgba(16, 185, 129, 0.1); color: var(--accent-green); border: 1px solid rgba(16, 185, 129, 0.28); padding: 3px 8px; border-radius: 999px; font-size: 0.72rem; font-weight: 650; }
+
+    .action-btns { display: flex; gap: 6px; justify-content: flex-end; flex-wrap: wrap; align-items: center; }
+    .btn-icon {
+        min-height: 34px;
+        border: 1px solid transparent;
+        padding: 6px 10px;
+        border-radius: 9px;
+        cursor: pointer;
+        font-size: 0.78rem;
+        font-weight: 700;
+        transition: transform 0.18s ease, filter 0.18s ease;
+    }
+    .btn-edit { background: rgba(59, 130, 246, 0.12); color: var(--accent); border-color: rgba(59, 130, 246, 0.28); }
+    .btn-admin { background: rgba(168, 85, 247, 0.12); color: var(--role-admin); border-color: rgba(168, 85, 247, 0.28); }
+    .btn-invitado-action { background: rgba(245, 158, 11, 0.12); color: var(--accent-amber); border-color: rgba(245, 158, 11, 0.28); }
+    .btn-approve { background: rgba(16, 185, 129, 0.12); color: var(--accent-green); border-color: rgba(16, 185, 129, 0.28); }
+    .btn-reject { background: rgba(239, 68, 68, 0.12); color: var(--accent-red); border-color: rgba(239, 68, 68, 0.28); }
+
+    #lista-mesas { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    .mesa-card { background: var(--card-inner); border-radius: 14px; padding: 14px; border: 1px solid var(--border-color); margin: 0; display: flex; flex-direction: column; gap: 10px; min-width: 0; box-shadow: var(--soft-shadow); }
+    .mesa-header { display: flex; justify-content: space-between; align-items: center; gap: 10px; border-bottom: 1px solid var(--border-color); padding-bottom: 9px; }
+    .mesa-titulo { font-weight: 700; color: var(--accent); font-size: 0.92rem; }
+    .mesa-meta { font-size: 0.76rem; color: var(--accent-amber); font-weight: 700; white-space: nowrap; }
+    .mesa-detalles { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; text-align: center; font-size: 0.84rem; }
+    .pareja-box { background: var(--card-bg); padding: 9px; border-radius: 10px; border: 1px solid var(--border-color); min-width: 0; overflow: hidden; }
+    .pareja-nombres { font-size: 0.74rem; font-weight: 700; margin-bottom: 4px; text-overflow: ellipsis; overflow: hidden; white-space: nowrap; }
+    .p1-color { color: var(--pareja1); }
+    .p2-color { color: var(--pareja2); }
+    .puntos-num { font-size: 1.2rem; font-weight: 750; }
+
+    .modal-overlay { position: fixed; inset: 0; width: 100%; height: 100%; background: rgba(5, 12, 25, 0.68); backdrop-filter: blur(5px); display: flex; justify-content: center; align-items: center; z-index: 1000; padding: 16px; }
+    .modal-content { background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 18px; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.22); width: 100%; max-width: 650px; max-height: 90vh; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 15px; }
+    .modal-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; border-bottom: 1px solid var(--border-color); padding-bottom: 11px; color: var(--accent); font-weight: 700; font-size: 1.05rem; }
+    .modal-close { background: var(--card-inner); border: 1px solid var(--border-color); width: 34px; height: 34px; border-radius: 9px; color: var(--text-muted); font-size: 1.05rem; cursor: pointer; }
+
+    .rondas-grid { display: flex; flex-direction: column; gap: 8px; }
+    .ronda-row { display: grid; grid-template-columns: 80px 1fr 1fr 40px; gap: 8px; align-items: center; font-size: 0.85rem; }
+
+    .pagination-container { display: flex; justify-content: space-between; align-items: center; gap: 10px; color: var(--text-muted); font-size: 0.78rem; margin-top: 12px; }
+    .pagination-buttons { display: flex; gap: 5px; flex-wrap: wrap; justify-content: flex-end; }
+    .pag-btn { min-width: 34px; min-height: 32px; background: var(--card-inner); border: 1px solid var(--border-color); color: var(--text); padding: 4px 9px; border-radius: 8px; cursor: pointer; font-size: 0.78rem; }
+    .pag-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+    .pag-btn.active { background: var(--button-bg); border-color: rgba(96, 165, 250, 0.5); color: var(--accent); }
+
+    /* Vista escritorio compacta dentro de la PWA móvil. */
+    html.app-desktop-layout body { padding: 8px 7px 18px; }
+    html.app-desktop-layout .container { max-width: none; gap: 7px; }
+    html.app-desktop-layout .top-bar,
+    html.app-desktop-layout .top-actions { gap: 6px; }
+    html.app-desktop-layout .btn-back {
+        min-height: 36px;
+        padding: 6px 11px;
+        border-radius: 10px;
+        font-size: 0.8rem;
+    }
+    html.app-desktop-layout .page-header {
+        min-height: 66px;
+        padding: 10px 13px;
+        border-radius: 14px;
+    }
+    html.app-desktop-layout .brand { gap: 9px; }
+    html.app-desktop-layout .brand img { width: 36px; height: 36px; }
+    html.app-desktop-layout .brand h1 { font-size: 1.35rem; }
+    html.app-desktop-layout .brand p { margin-top: 2px; font-size: 0.76rem; }
+    html.app-desktop-layout .page-pill { padding: 5px 9px; font-size: 0.72rem; }
+    html.app-desktop-layout .admin-grid { gap: 7px; }
+    html.app-desktop-layout .card { padding: 10px; border-radius: 13px; }
+    html.app-desktop-layout .section-title {
+        min-height: 22px;
+        margin-bottom: 7px;
+        font-size: 0.9rem;
+        gap: 7px;
+    }
+    html.app-desktop-layout .form-grid,
+    html.app-desktop-layout .input-group { gap: 6px; }
+    html.app-desktop-layout input,
+    html.app-desktop-layout select,
+    html.app-desktop-layout .btn,
+    html.app-desktop-layout .btn-export {
+        min-height: 36px;
+        padding: 7px 9px;
+        border-radius: 9px;
+        font-size: 0.8rem;
+    }
+    html.app-desktop-layout .stats-grid { gap: 6px; margin-bottom: 7px; }
+    html.app-desktop-layout .stat-card { padding: 8px 6px; border-radius: 10px; }
+    html.app-desktop-layout .stat-card p { margin-top: 5px; font-size: 1.25rem; }
+    html.app-desktop-layout .filters-container { gap: 6px; margin-bottom: 7px; }
+    html.app-desktop-layout .filter-group { gap: 3px; min-width: 100px; }
+    html.app-desktop-layout #lista-mesas { gap: 7px; }
+    html.app-desktop-layout .mesa-card { padding: 9px; gap: 6px; border-radius: 11px; }
+    html.app-desktop-layout .mesa-header { padding-bottom: 6px; }
+    html.app-desktop-layout .pareja-box { padding: 6px; }
+    html.app-desktop-layout .history-table th,
+    html.app-desktop-layout .history-table td { padding: 5px 4px; }
+    html.app-desktop-layout .pagination-container { margin-top: 7px; }
+
+    .hidden { display: none !important; }
+
+    @media (max-width: 680px) {
+        body { padding: 14px 10px 30px; overflow-x: hidden; }
+        .page-header { padding: 15px; border-radius: 17px; align-items: flex-start; }
+        .brand { gap: 10px; }
+        .brand img { width: 42px; height: 42px; }
+        .brand p { font-size: 0.8rem; }
+        .page-pill { display: none; }
+        .top-bar { justify-content: stretch; }
+        .top-bar > .btn-back { flex: 1; }
+        .top-actions .btn-back { width: auto; padding-inline: 14px; font-size: 0.86rem; white-space: nowrap; }
+        .admin-grid { grid-template-columns: 1fr; }
+        .full-card { grid-column: auto; }
+        .card { padding: 16px 14px; border-radius: 16px; }
+        .input-group { flex-direction: column; }
+        .stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .history-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+        #lista-mesas { grid-template-columns: 1fr; }
+        .section-title { align-items: flex-start; flex-wrap: wrap; }
+        .section-title #filtro-buscar { width: 100% !important; min-height: 42px; }
+        .table-wrap { overflow-x: visible; }
+        .tabla-custom { display: block; width: 100%; min-width: 0; margin-top: 0; }
+        .tabla-custom thead { display: none; }
+        .tabla-custom tbody { display: block; width: 100%; }
+        .tabla-custom tbody tr {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr);
+            gap: 10px;
+            width: 100%;
+            padding: 13px 0;
+            border-bottom: 1px solid var(--border-color);
+        }
+        .tabla-custom tbody tr:last-child { border-bottom: none; }
+        .tabla-custom td {
+            display: grid;
+            grid-template-columns: minmax(92px, 0.38fr) minmax(0, 0.62fr);
+            align-items: start;
+            gap: 10px;
+            width: 100%;
+            min-width: 0;
+            padding: 0;
+            border: none;
+            overflow-wrap: anywhere;
+        }
+        .tabla-custom td::before {
+            color: var(--text-muted);
+            font-size: 0.68rem;
+            font-weight: 750;
+            letter-spacing: 0.025em;
+            text-transform: uppercase;
+        }
+        .tabla-custom td[colspan] { display: block; padding: 10px 0; text-align: center !important; }
+        .tabla-custom td[colspan]::before { display: none; }
+        #lista-solicitudes td:nth-child(1)::before { content: "Nombre"; }
+        #lista-solicitudes td:nth-child(2)::before { content: "Estatus"; }
+        #lista-solicitudes td:nth-child(3)::before { content: "Acciones"; }
+        #lista-usuarios td:nth-child(1)::before { content: "Nombre y usuario"; }
+        #lista-usuarios td:nth-child(2)::before { content: "Estatus / rol"; }
+        #lista-usuarios td:nth-child(3)::before { content: "Acciones"; }
+        #cuerpo-tabla-historial td:nth-child(1)::before { content: "Fecha y hora"; }
+        #cuerpo-tabla-historial td:nth-child(2)::before { content: "Modalidad"; }
+        #cuerpo-tabla-historial td:nth-child(3)::before { content: "Equipo A"; }
+        #cuerpo-tabla-historial td:nth-child(4)::before { content: "Puntos A"; }
+        #cuerpo-tabla-historial td:nth-child(5)::before { content: "Equipo B"; }
+        #cuerpo-tabla-historial td:nth-child(6)::before { content: "Puntos B"; }
+        #cuerpo-tabla-historial td:nth-child(7)::before { content: "Ganador"; }
+        #cuerpo-tabla-historial td:nth-child(8)::before { content: "Lisa"; }
+        #cuerpo-tabla-historial td:nth-child(9)::before { content: "Acciones"; }
+        .tabla-custom .action-btns { justify-content: flex-start; min-width: 0; }
+
+        #cuerpo-tabla-historial,
+        #lista-usuarios { display: grid; gap: clamp(6px, 2vw, 12px); }
+
+        #cuerpo-tabla-historial tr {
+            grid-template-columns: minmax(0, 1fr) 70px;
+            grid-template-areas:
+                "fecha modalidad"
+                "equipo-a puntos-a"
+                "equipo-b puntos-b"
+                "ganador lisa"
+                "acciones acciones";
+            gap: clamp(5px, 1.6vw, 9px) 0;
+            padding: clamp(9px, 3vw, 13px);
+            border: 1px solid var(--border-color);
+            border-radius: 14px;
+            background: var(--card-inner);
+            box-shadow: var(--soft-shadow);
+        }
+        #cuerpo-tabla-historial tr:hover { background: var(--card-inner); }
+        #cuerpo-tabla-historial td {
+            display: flex;
+            width: auto;
+            padding: 0;
+            gap: 4px;
+            border: none;
+        }
+        #cuerpo-tabla-historial td::before { display: none; }
+        #cuerpo-tabla-historial td[colspan],
+        #lista-usuarios td[colspan] { grid-column: 1 / -1; }
+        #cuerpo-tabla-historial .history-date { grid-area: fecha; flex-direction: column; justify-content: center; line-height: 1.25; }
+        #cuerpo-tabla-historial .history-date-main { font-weight: 750; color: var(--text); }
+        #cuerpo-tabla-historial .history-time { color: var(--text-muted); font-size: 0.76rem; }
+        #cuerpo-tabla-historial .history-mode { grid-area: modalidad; align-items: flex-start; justify-content: flex-end; }
+        #cuerpo-tabla-historial .history-team,
+        #cuerpo-tabla-historial .history-score {
+            min-height: clamp(48px, 14vw, 58px);
+            background: var(--card-bg);
+            border-top: 1px solid var(--border-color);
+            border-bottom: 1px solid var(--border-color);
+        }
+        #cuerpo-tabla-historial .history-team {
+            flex-direction: column;
+            justify-content: center;
+            padding: clamp(6px, 2vw, 8px) clamp(7px, 2.5vw, 10px);
+            border-left: 1px solid var(--border-color);
+            border-radius: 11px 0 0 11px;
+            font-size: 0.84rem !important;
+            font-weight: 650;
+        }
+        #cuerpo-tabla-historial .history-team::before {
+            display: block;
+            color: var(--text-muted);
+            font-size: 0.65rem;
+            font-weight: 750;
+            letter-spacing: 0.02em;
+            text-transform: uppercase;
+        }
+        #cuerpo-tabla-historial .history-team-a { grid-area: equipo-a; }
+        #cuerpo-tabla-historial .history-team-a::before { content: "Equipo A"; }
+        #cuerpo-tabla-historial .history-team-b { grid-area: equipo-b; }
+        #cuerpo-tabla-historial .history-team-b::before { content: "Equipo B"; }
+        #cuerpo-tabla-historial .history-score {
+            align-items: center;
+            justify-content: center;
+            padding: clamp(6px, 2vw, 8px);
+            border-right: 1px solid var(--border-color);
+            border-radius: 0 11px 11px 0;
+            font-size: 1.18rem;
+        }
+        #cuerpo-tabla-historial .history-score-a { grid-area: puntos-a; }
+        #cuerpo-tabla-historial .history-score-b { grid-area: puntos-b; }
+        #cuerpo-tabla-historial .history-winner { grid-area: ganador; flex-direction: column; align-items: flex-start; justify-content: center; }
+        #cuerpo-tabla-historial .history-winner::before,
+        #cuerpo-tabla-historial .history-lisa::before {
+            display: block;
+            color: var(--text-muted);
+            font-size: 0.65rem;
+            font-weight: 750;
+            letter-spacing: 0.02em;
+            text-transform: uppercase;
+        }
+        #cuerpo-tabla-historial .history-winner::before { content: "Ganador"; }
+        #cuerpo-tabla-historial .history-lisa { grid-area: lisa; flex-direction: column; align-items: stretch; justify-content: center; text-align: center !important; }
+        #cuerpo-tabla-historial .history-lisa::before { content: "Lisa"; }
+        #cuerpo-tabla-historial .history-actions { grid-area: acciones; padding-top: clamp(5px, 1.6vw, 9px); border-top: 1px solid var(--border-color); }
+        #cuerpo-tabla-historial .history-actions .action-btns { width: 100%; justify-content: flex-end; }
+
+        #lista-usuarios tr {
+            grid-template-columns: minmax(0, 1fr) auto;
+            gap: 10px 12px;
+            padding: 13px;
+            border: 1px solid var(--border-color);
+            border-radius: 14px;
+            background: var(--card-inner);
+            box-shadow: var(--soft-shadow);
+        }
+        #lista-usuarios tr:hover { background: var(--card-inner); }
+        #lista-usuarios td { display: block; width: auto; padding: 0; border: none; }
+        #lista-usuarios td::before { display: none; }
+        #lista-usuarios .user-identity { grid-column: 1; grid-row: 1; min-width: 0; }
+        #lista-usuarios .user-name { align-items: flex-start; overflow-wrap: anywhere; }
+        #lista-usuarios .user-role { grid-column: 2; grid-row: 1; align-self: start; text-align: right; }
+        #lista-usuarios .user-role .badge-rol { max-width: 100%; }
+        #lista-usuarios .user-actions { grid-column: 1 / -1; grid-row: 2; padding-top: 10px; border-top: 1px solid var(--border-color); }
+        #lista-usuarios .user-actions .action-btns { width: 100%; gap: 7px; }
+        .filters-container { display: grid; grid-template-columns: 1fr 1fr; }
+        .filter-group { min-width: 0; }
+        .btn-export { grid-column: 1 / -1; }
+        .pagination-container { align-items: flex-start; flex-direction: column; }
+        .pagination-buttons { justify-content: flex-start; }
+        .modal-overlay { padding: 0; align-items: flex-end; }
+        .modal-content { max-height: 92vh; border-radius: 20px 20px 0 0; padding: 18px 14px; }
+        .ronda-row { grid-template-columns: 62px 1fr 1fr 34px; gap: 5px; }
+    }
+
+    @media (max-width: 430px) {
+        .brand h1 { font-size: 1.2rem; }
+        .brand p { max-width: 235px; }
+        .filters-container { grid-template-columns: 1fr; }
+        .btn-export { grid-column: auto; }
+        .mesa-detalles { grid-template-columns: 1fr; }
+    }
+    </style>
+
+    <!-- Ajuste exclusivo para iPhone/iPad: respeta notch, Dynamic Island y barra inferior
+         sin cambiar el diseño de Android ni escritorio. -->
+    <script id="ios-safe-area-fix">
+        (function () {
+            const esIOS =
+                /iPhone|iPad|iPod/i.test(navigator.userAgent) ||
+                (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
+            if (!esIOS) return;
+
+            document.documentElement.classList.add('ios-safe-area');
+
+            function aplicarSafeAreaIOS() {
+                const body = document.body;
+                if (!body) return;
+
+                if (body.dataset.iosSafeAreaCapturada !== '1') {
+                    body.dataset.iosPaddingTop = body.style.paddingTop || '';
+                    body.dataset.iosPaddingRight = body.style.paddingRight || '';
+                    body.dataset.iosPaddingBottom = body.style.paddingBottom || '';
+                    body.dataset.iosPaddingLeft = body.style.paddingLeft || '';
+                    body.dataset.iosSafeAreaCapturada = '1';
+                }
+
+                body.style.paddingTop = body.dataset.iosPaddingTop;
+                body.style.paddingRight = body.dataset.iosPaddingRight;
+                body.style.paddingBottom = body.dataset.iosPaddingBottom;
+                body.style.paddingLeft = body.dataset.iosPaddingLeft;
+
+                const estilos = getComputedStyle(body);
+
+                body.style.paddingTop =
+                    `calc(${estilos.paddingTop} + env(safe-area-inset-top, 0px))`;
+                body.style.paddingRight =
+                    `calc(${estilos.paddingRight} + env(safe-area-inset-right, 0px))`;
+                body.style.paddingBottom =
+                    `calc(${estilos.paddingBottom} + env(safe-area-inset-bottom, 0px))`;
+                body.style.paddingLeft =
+                    `calc(${estilos.paddingLeft} + env(safe-area-inset-left, 0px))`;
+            }
+
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', aplicarSafeAreaIOS, { once: true });
+            } else {
+                aplicarSafeAreaIOS();
+            }
+
+            window.addEventListener('orientationchange', function () {
+                window.setTimeout(aplicarSafeAreaIOS, 180);
+            });
+        })();
+    </script>
+
+</head>
+<body>
+
+<div class="container">
+    <div class="top-bar">
+        <a href="lobby.html" class="btn-back lobby-button">← Volver al lobby</a>
+        <div class="top-actions">
+            <button id="theme-toggle" onclick="cambiarTema()" class="btn-back theme-toggle" type="button">
+                <span class="theme-icon" aria-hidden="true">🌙</span>
+                <span class="theme-label">Oscuro</span>
+            </button>
+        </div>
+    </div>
+
+    <header class="page-header">
+        <div class="brand">
+            <img src="logo.png" alt="Logo del Club Dominó y Romo">
+            <div>
+                <h1>Panel de Administración</h1>
+                <p>Gestión del club, mesas, partidas y permisos</p>
+            </div>
+        </div>
+        <span class="page-pill">🛡️ Administración</span>
+    </header>
+
+    <div id="error-box" class="error-banner hidden"></div>
+
+    <main class="admin-grid" id="admin-content" hidden>
+
+    <!-- 1. SOLICITUDES PENDIENTES -->
+    <div class="card compact-card">
+        <div class="section-title">
+            <span>Solicitudes Pendientes</span>
+            <span id="count-solicitudes" class="badge-rol badge-pendiente">0</span>
+        </div>
+        <div class="table-wrap solicitudes-wrap">
+        <table class="tabla-custom solicitudes-table">
+            <thead>
+                <tr>
+                    <th>Nombre</th>
+                    <th>Estatus</th>
+                    <th style="text-align: right;">Acciones</th>
+                </tr>
+            </thead>
+            <tbody id="lista-solicitudes">
+                <tr><td colspan="3" style="color: var(--text-muted); text-align: center;">Sin solicitudes pendientes.</td></tr>
+            </tbody>
+        </table>
+        </div>
+    </div>
+
+    <!-- 2. CREACIÓN DIRECTA DE USUARIOS -->
+    <div class="card compact-card">
+        <div class="section-title">Crear Perfil Manual</div>
+        <form onsubmit="crearUsuarioManual(event)" class="form-grid">
+            <input type="text" id="nuevo-nombre" placeholder="Nombre completo (Ej: Pedro Martínez)" required>
+            <input type="text" id="nuevo-username" placeholder="Nombre de usuario / Alias (Ej: pedro_m)" required>
+            <div class="input-group">
+                <select id="nuevo-rol">
+                    <option value="invitado">Estatus: Invitado</option>
+                    <option value="jugador">Estatus: Jugador</option>
+                </select>
+                <button type="submit" class="btn btn-green">Crear Perfil</button>
+            </div>
+        </form>
+    </div>
+
+    <!-- 3. MESAS ACTIVAS EN CURSO -->
+    <div class="card full-card">
+        <div class="section-title">Mesas Activas / En Curso</div>
+        <div id="lista-mesas">
+            <div style="color: var(--text-muted); text-align: center; font-size: 0.85rem;">Cargando mesas...</div>
+        </div>
+    </div>
+
+    <!-- 4. HISTORIAL DE PARTIDAS CERRADAS Y GESTIÓN -->
+    <div class="card full-card">
+        <div class="section-title">
+            <span>Gestión de Partidas (Historial)</span>
+            <button class="btn-icon btn-edit" style="font-size: 0.75rem; padding: 4px 8px;" onclick="refrescarTodo()">🔄 Actualizar</button>
+        </div>
+
+        <div class="stats-grid history-stats">
+            <div class="stat-card">
+                <h3>Total Partidas</h3>
+                <p id="stat-total">0</p>
+            </div>
+            <div class="stat-card">
+                <h3>Partidas Lisas</h3>
+                <p id="stat-lisas" style="color: var(--accent-amber);">0</p>
+            </div>
+            <div class="stat-card">
+                <h3>Promedio Puntos</h3>
+                <p id="stat-pts-prom">0</p>
+            </div>
+        </div>
+
+        <div class="filters-container">
+            <div class="filter-group">
+                <label for="filtro-desde">Desde</label>
+                <input type="date" id="filtro-desde" onchange="aplicarFiltrosHistorial()">
+            </div>
+            <div class="filter-group">
+                <label for="filtro-hasta">Hasta</label>
+                <input type="date" id="filtro-hasta" onchange="aplicarFiltrosHistorial()">
+            </div>
+            <div class="filter-group">
+                <label for="filtro-jugador">Jugador</label>
+                <input type="text" id="filtro-jugador" placeholder="Nombre..." oninput="aplicarFiltrosHistorial()">
+            </div>
+            <div class="filter-group">
+                <label for="filtro-modalidad">Modalidad</label>
+                <select id="filtro-modalidad" onchange="aplicarFiltrosHistorial()">
+                    <option value="">Todas</option>
+                    <option value="100">100 pts</option>
+                    <option value="150">150 pts</option>
+                    <option value="200">200 pts</option>
+                </select>
+            </div>
+            <button class="btn-export" onclick="exportarCSV()">Exportar CSV</button>
+        </div>
+
+        <div class="table-wrap">
+            <table class="tabla-custom history-table">
+                <colgroup>
+                    <col style="width: 13%;">
+                    <col style="width: 9%;">
+                    <col style="width: 18%;">
+                    <col style="width: 7%;">
+                    <col style="width: 18%;">
+                    <col style="width: 7%;">
+                    <col style="width: 11%;">
+                    <col style="width: 6%;">
+                    <col style="width: 11%;">
+                </colgroup>
+                <thead>
+                    <tr>
+                        <th>Fecha y Hora</th>
+                        <th>Modalidad</th>
+                        <th>Equipo A</th>
+                        <th style="text-align: center;">Pts A</th>
+                        <th>Equipo B</th>
+                        <th style="text-align: center;">Pts B</th>
+                        <th>Ganador</th>
+                        <th style="text-align: center;">Lisa</th>
+                        <th style="text-align: right;">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody id="cuerpo-tabla-historial">
+                    <tr><td colspan="9" style="color: var(--text-muted); text-align: center;">Cargando historial...</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="pagination-container">
+            <span id="info-paginacion">Mostrando 0 partidas</span>
+            <div class="pagination-buttons" id="controles-paginacion"></div>
+        </div>
+    </div>
+
+    <!-- 5. GESTIÓN DE JUGADORES Y PERMISOS -->
+    <div class="card full-card">
+        <div class="section-title">
+            <span>Gestión de Jugadores y Permisos</span>
+            <input type="text" id="filtro-buscar" placeholder="Buscar jugador..." oninput="filtrarTablaUsuarios()" style="width: 140px; padding: 6px 10px; font-size: 0.8rem;">
+        </div>
+        <div class="table-wrap">
+        <table class="tabla-custom users-table">
+            <colgroup>
+                <col style="width: 26%;">
+                <col style="width: 16%;">
+                <col style="width: 58%;">
+            </colgroup>
+            <thead>
+                <tr>
+                    <th>Nombre y Usuario</th>
+                    <th>Estatus / Rol</th>
+                    <th style="text-align: right;">Acciones</th>
+                </tr>
+            </thead>
+            <tbody id="lista-usuarios">
+                <tr><td colspan="3" style="color: var(--text-muted); text-align: center;">Cargando usuarios...</td></tr>
+            </tbody>
+        </table>
+        </div>
+    </div>
+    </main>
+</div>
+
+<!-- MODALES FLOTANTES -->
+<div id="modal-container"></div>
+
+<script>
+    function actualizarBotonTema() {
+        const html = document.documentElement;
+        const boton = document.getElementById('theme-toggle');
+        if (!boton) return;
+
+        const esClaro = html.classList.contains('light-mode');
+        const icono = boton.querySelector('.theme-icon');
+        const etiqueta = boton.querySelector('.theme-label');
+
+        if (icono) icono.textContent = esClaro ? '☀️' : '🌙';
+        if (etiqueta) etiqueta.textContent = esClaro ? 'Claro' : 'Oscuro';
+
+        boton.dataset.mode = esClaro ? 'light' : 'dark';
+        boton.title = esClaro ? 'Cambiar a modo oscuro' : 'Cambiar a modo claro';
+        boton.setAttribute('aria-label', boton.title);
+        boton.setAttribute('aria-pressed', esClaro ? 'false' : 'true');
+    }
+
+    function cambiarTema() {
+        const html = document.documentElement;
+        html.classList.toggle('light-mode');
+        const currentTheme = html.classList.contains('light-mode') ? 'light' : 'dark';
+        localStorage.setItem('theme', currentTheme);
+        actualizarBotonTema();
+    }
+
+    actualizarBotonTema();
+
+    window.onerror = function(msg) {
+        mostrarError('Error JS: ' + msg);
+        return false;
+    };
+
+    function mostrarError(msj) {
+        const box = document.getElementById('error-box');
+        if (box) {
+            box.innerText = msj;
+            box.classList.remove('hidden');
+        }
+    }
+
+    const SUPABASE_URL = 'https://kzbslfwupzwczmjqfjem.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt6YnNsZnd1cHp3Y3ptanFmamVtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODcxNDI1MzksImV4cCI6MjEwMjcxODUzOX0.qeeh2FV3zKRet-jRMVvJUwBm9jYHsLbWSYWIao574qc';
+
+    var sbClient = window.supabase
+        ? (window.supabaseClient || window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY))
+        : null;
+
+    if (!window.supabaseClient && sbClient) {
+        window.supabaseClient = sbClient;
+    }
+    
+    // Caché persistente inicializada
+    let cachePerfiles = JSON.parse(localStorage.getItem('domino_cache_perfiles') || '{}');
+    let cacheMesas = JSON.parse(localStorage.getItem('domino_cache_mesas') || '{}');
+    let cacheMesasActivas = JSON.parse(localStorage.getItem('domino_cache_mesas_activas') || '[]');
+    let cachePuntosMesas = JSON.parse(localStorage.getItem('domino_cache_puntos_mesas') || '{}');
+    let cacheSolicitudes = JSON.parse(localStorage.getItem('domino_cache_solicitudes') || '[]');
+    let cachePartidasCerradas = JSON.parse(localStorage.getItem('domino_cache_admin_historial_v1') || '[]');
+    let listaFiltradaHistorial = [];
+    let paginaActualHistorial = 1;
+    const porPaginaHistorial = 10;
+    var todosLosUsuarios = JSON.parse(localStorage.getItem('domino_cache_admin_usuarios_v1') || '[]');
+    const ADMIN_ROLE_CACHE_KEY = 'domino_cache_admin_rol_v1';
+    const ADMIN_USER_CACHE_KEY = 'domino_cache_admin_usuario_v1';
+    let firmaMesasAdmin = '';
+    let firmaSolicitudesAdmin = '';
+    let firmaHistorialAdmin = '';
+    let firmaUsuariosAdmin = '';
+
+    function firmaDatosAdmin(valor) {
+        const normalizar = dato => {
+            if (Array.isArray(dato)) {
+                return dato.map(normalizar).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
+            }
+            if (dato && typeof dato === 'object') {
+                return Object.keys(dato).sort().reduce((salida, clave) => {
+                    salida[clave] = normalizar(dato[clave]);
+                    return salida;
+                }, {});
+            }
+            return dato;
+        };
+        return JSON.stringify(normalizar(valor));
+    }
+
+    function obtenerRolAdminDesdeCache() {
+        try {
+            let rol = (localStorage.getItem(ADMIN_ROLE_CACHE_KEY) || '').trim().toLowerCase();
+            if (rol === 'admin' || rol === 'super_admin') return rol;
+
+            const perfilCache = JSON.parse(localStorage.getItem('cache_perfil') || 'null');
+            rol = (perfilCache?.rol || '').trim().toLowerCase();
+            return rol === 'admin' || rol === 'super_admin' ? rol : '';
+        } catch (error) {
+            console.warn('No se pudo restaurar el rol administrativo desde caché.', error);
+            return '';
+        }
+    }
+
+    let usuarioActualRol = obtenerRolAdminDesdeCache();
+    let onlineUsersSet = new Set();
+
+    async function restaurarAccesoAdminLocal() {
+        try {
+            const resultadoSesion = await sbClient.auth.getSession();
+            const session = resultadoSesion?.data?.session || null;
+            const usuarioCacheado = localStorage.getItem(ADMIN_USER_CACHE_KEY) || '';
+            usuarioActualRol = obtenerRolAdminDesdeCache();
+            return Boolean(
+                session?.user?.id &&
+                usuarioCacheado &&
+                String(session.user.id) === usuarioCacheado &&
+                (usuarioActualRol === 'admin' || usuarioActualRol === 'super_admin')
+            );
+        } catch (error) {
+            console.warn('No se pudo restaurar la sesión administrativa local.', error);
+            return false;
+        }
+    }
+
+    function mostrarAdminDesdeCache() {
+        document.getElementById('admin-content')?.removeAttribute('hidden');
+        renderizarMesasActivasLocales();
+        renderizarSolicitudesLocales();
+        renderizarHistorialLocal();
+        renderizarUsuariosLocales();
+    }
+
+    document.addEventListener('DOMContentLoaded', async () => {
+        if (!sbClient) {
+            mostrarError('No se pudo inicializar Supabase.');
+            return;
+        }
+
+        // getSession usa la sesión local. Si coincide con el administrador
+        // guardado, la página aparece sin esperar ninguna consulta remota.
+        const accesoLocal = await restaurarAccesoAdminLocal();
+        if (accesoLocal) mostrarAdminDesdeCache();
+
+        if (navigator.onLine === false) {
+            if (!accesoLocal) mostrarError('Sin conexión: no hay una sesión administrativa guardada en este dispositivo.');
+            return;
+        }
+
+        const sincronizar = async () => {
+            const accesoPermitido = await verificarSesionYRol();
+            if (!accesoPermitido) return;
+            if (!accesoLocal) mostrarAdminDesdeCache();
+            await Promise.all([inicializarPresencia(), refrescarTodo()]);
+        };
+
+        if (accesoLocal) sincronizar().catch(error => console.error('Error sincronizando administración:', error));
+        else await sincronizar();
+    });
+
+    function renderizarMesasActivasLocales() {
+        const cont = document.getElementById('lista-mesas');
+        if (!cont) return;
+        const firmaNueva = firmaDatosAdmin({ cacheMesasActivas, cachePuntosMesas, cachePerfiles });
+        if (firmaNueva === firmaMesasAdmin) return;
+        firmaMesasAdmin = firmaNueva;
+        if (cacheMesasActivas.length > 0) {
+            let htmlTemp = '';
+            cacheMesasActivas.forEach((m, idx) => {
+                let pts = cachePuntosMesas[m.id] || { pts1: 0, pts2: 0 };
+                htmlTemp += `
+                    <div class="mesa-card">
+                        <div class="mesa-header">
+                            <div><span class="mesa-titulo">Mesa #${idx + 1}</span></div>
+                            <span class="mesa-meta">Meta: ${m.limite_puntos || 200} pts</span>
+                        </div>
+                        <div class="mesa-detalles">
+                            <div class="pareja-box">
+                                <div class="pareja-nombres p1-color">${cachePerfiles[m.jugador1_id] || 'Jugador 1'} & ${cachePerfiles[m.jugador3_id] || 'Jugador 3'}</div>
+                                <div class="puntos-num p1-color">${pts.pts1} pts</div>
+                            </div>
+                            <div class="pareja-box">
+                                <div class="pareja-nombres p2-color">${cachePerfiles[m.jugador2_id] || 'Jugador 2'} & ${cachePerfiles[m.jugador4_id] || 'Jugador 4'}</div>
+                                <div class="puntos-num p2-color">${pts.pts2} pts</div>
+                            </div>
+                        </div>
+                        <div class="action-btns" style="margin-top: 4px;">
+                            <button class="btn-icon btn-reject" onclick="cerrarMesa('${m.id}')">⏹️ Finalizar Mesa</button>
+                        </div>
+                    </div>
+                `;
+            });
+            cont.innerHTML = htmlTemp;
+        } else {
+            cont.innerHTML = '<div style="color: var(--text-muted); text-align: center; font-size: 0.85rem;">No hay mesas activas.</div>';
+        }
+    }
+
+    function renderizarSolicitudesLocales() {
+        const tbody = document.getElementById('lista-solicitudes');
+        const badgeCount = document.getElementById('count-solicitudes');
+        if (!tbody) return;
+        const firmaNueva = firmaDatosAdmin(cacheSolicitudes);
+        if (firmaNueva === firmaSolicitudesAdmin) return;
+        firmaSolicitudesAdmin = firmaNueva;
+
+        if (cacheSolicitudes.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="3" style="color: var(--text-muted); text-align: center;">Sin solicitudes pendientes.</td></tr>';
+            if (badgeCount) badgeCount.innerText = '0';
+            return;
+        }
+
+        if (badgeCount) badgeCount.innerText = cacheSolicitudes.length;
+        tbody.innerHTML = '';
+        cacheSolicitudes.forEach(s => {
+            tbody.innerHTML += `
+                <tr>
+                    <td style="font-weight: bold;">${s.nombre_completo || 'Usuario'}</td>
+                    <td><span class="badge-rol badge-pendiente">Pendiente</span></td>
+                    <td>
+                        <div class="action-btns">
+                            <button class="btn-icon btn-approve" onclick="responderSolicitud('${s.id}')">✓ Aprobar</button>
+                            <button class="btn-icon btn-reject" onclick="eliminarPerfil('${s.id}')">✕ Rechazar</button>
+                        </div>
+                    </td>
+                </tr>
+            `;
+        });
+    }
+
+    function renderizarHistorialLocal() {
+        const firmaNueva = firmaDatosAdmin({ cachePartidasCerradas, cachePerfiles });
+        if (firmaNueva === firmaHistorialAdmin) return;
+        firmaHistorialAdmin = firmaNueva;
+        if (!Array.isArray(cachePartidasCerradas)) cachePartidasCerradas = [];
+        aplicarFiltrosHistorial();
+    }
+
+    function renderizarUsuariosLocales() {
+        renderizarTablaUsuarios(Array.isArray(todosLosUsuarios) ? todosLosUsuarios : []);
+    }
+
+    async function inicializarPresencia() {
+        try {
+            const { data: { session } } = await sbClient.auth.getSession();
+            const channel = sbClient.channel('domino-online-users', {
+                config: { presence: { key: session ? session.user.id : 'anon' } }
+            });
+
+            channel.on('presence', { event: 'sync' }, () => {
+                const state = channel.presenceState();
+                onlineUsersSet.clear();
+                Object.keys(state).forEach(userId => {
+                    onlineUsersSet.add(userId);
+                });
+                renderizarTablaUsuarios(todosLosUsuarios);
+            });
+
+            await channel.subscribe(async (status) => {
+                if (status === 'SUBSCRIBED' && session) {
+                    await channel.track({ user_id: session.user.id, online_at: new Date().toISOString() });
+                }
+            });
+        } catch (e) {
+            console.error('Error en presencia:', e);
+        }
+    }
+
+    async function verificarSesionYRol() {
+        if (navigator.onLine === false) {
+            if (!await restaurarAccesoAdminLocal()) {
+                mostrarError('Sin conexión: no hay una sesión administrativa guardada en este dispositivo.');
+                return false;
+            }
+            return true;
+        }
+
+        try {
+            const { data: { session } } = await sbClient.auth.getSession();
+            if (!session || !session.user) {
+                localStorage.removeItem(ADMIN_ROLE_CACHE_KEY);
+                localStorage.removeItem(ADMIN_USER_CACHE_KEY);
+                window.location.href = 'index.html';
+                return;
+            }
+
+            const { data: perfil, error } = await sbClient.from('perfiles').select('rol').eq('id', session.user.id).single();
+            if (error || !perfil) {
+                localStorage.removeItem(ADMIN_ROLE_CACHE_KEY);
+                localStorage.removeItem(ADMIN_USER_CACHE_KEY);
+                window.location.href = 'index.html';
+                return;
+            }
+
+            usuarioActualRol = (perfil.rol || '').trim().toLowerCase();
+            if (usuarioActualRol !== 'admin' && usuarioActualRol !== 'super_admin') {
+                localStorage.removeItem(ADMIN_ROLE_CACHE_KEY);
+                localStorage.removeItem(ADMIN_USER_CACHE_KEY);
+                alert('Acceso no autorizado. No tienes privilegios de administrador.');
+                window.location.href = 'index.html';
+                return;
+            }
+            localStorage.setItem(ADMIN_ROLE_CACHE_KEY, usuarioActualRol);
+            localStorage.setItem(ADMIN_USER_CACHE_KEY, String(session.user.id));
+        } catch (e) {
+            console.error('Error al verificar sesión actual', e);
+            window.location.href = 'index.html';
+            return;
+        }
+        
+        const selectRol = document.getElementById('nuevo-rol');
+        if (selectRol) {
+            if (usuarioActualRol === 'super_admin') {
+                selectRol.innerHTML = `
+                    <option value="invitado">Estatus: Invitado</option>
+                    <option value="jugador">Estatus: Jugador</option>
+                    <option value="admin">Estatus: Administrador</option>
+                `;
+            } else {
+                selectRol.innerHTML = `
+                    <option value="invitado">Estatus: Invitado</option>
+                    <option value="jugador">Estatus: Jugador</option>
+                `;
+            }
+        }
+        return true;
+    }
+
+    async function refrescarTodo() {
+        await Promise.all([
+            cargarPerfiles(),
+            cargarMesas(),
+            cargarSolicitudes()
+        ]);
+        await Promise.all([
+            cargarMesasDetalladas(),
+            cargarHistorialCerradoAdmin(),
+            cargarUsuarios()
+        ]);
+    }
+
+    async function cargarPerfiles() {
+        const { data } = await sbClient.from('perfiles').select('*');
+        if (data) {
+            cachePerfiles = {};
+            data.forEach(p => {
+                cachePerfiles[p.id] = p.username || p.nombre_completo || 'Jugador';
+            });
+            localStorage.setItem('domino_cache_perfiles', JSON.stringify(cachePerfiles));
+        }
+    }
+
+    async function cargarMesas() {
+        const { data } = await sbClient.from('mesas').select('*');
+        if (data) {
+            cacheMesas = {};
+            data.forEach(m => {
+                cacheMesas[m.id] = m;
+            });
+            localStorage.setItem('domino_cache_mesas', JSON.stringify(cacheMesas));
+        }
+    }
+
+    async function cargarSolicitudes() {
+        const { data: solicitudes, error } = await sbClient.from('perfiles').select('*').eq('estado', 'pendiente');
+        if (error || !solicitudes) return;
+
+        // Actualizar caché de solicitudes y persistir en localStorage
+        cacheSolicitudes = solicitudes;
+        localStorage.setItem('domino_cache_solicitudes', JSON.stringify(cacheSolicitudes));
+        renderizarSolicitudesLocales();
+    }
+
+    async function responderSolicitud(userId) {
+        const { error } = await sbClient.from('perfiles').update({ 
+            estado: 'aprobado',
+            rol: 'invitado' 
+        }).eq('id', userId);
+        
+        if (error) mostrarError('Error: ' + error.message);
+        else await refrescarTodo();
+    }
+
+    async function eliminarPerfil(userId) {
+        if (!confirm('¿Deseas rechazar y borrar esta solicitud?')) return;
+        const { error } = await sbClient.from('perfiles').delete().eq('id', userId);
+        if (error) mostrarError('Error: ' + error.message);
+        else await refrescarTodo();
+    }
+
+    async function cargarMesasDetalladas() {
+        const { data: mesas, error: errMesas } = await sbClient.from('mesas').select('*').order('creado_en', { ascending: false });
+        const { data: manos, error: errManos } = await sbClient.from('manos').select('*').eq('anulada', false);
+        
+        const cont = document.getElementById('lista-mesas');
+        if (errMesas || !mesas) {
+            cont.innerHTML = '<div style="color: var(--text-muted); text-align: center; font-size: 0.85rem;">Error al cargar mesas.</div>';
+            return;
+        }
+
+        const puntosPorMesa = {};
+        (manos || []).forEach(mano => {
+            if (!puntosPorMesa[mano.mesa_id]) {
+                puntosPorMesa[mano.mesa_id] = { pts1: 0, pts2: 0 };
+            }
+            puntosPorMesa[mano.mesa_id].pts1 += (mano.puntos_pareja1 || 0);
+            puntosPorMesa[mano.mesa_id].pts2 += (mano.puntos_pareja2 || 0);
+        });
+
+        const mesasActivas = mesas.filter(m => {
+            let limiteMeta = m.limite_puntos || 200;
+            let pts = puntosPorMesa[m.id] || { pts1: 0, pts2: 0 };
+            return pts.pts1 < limiteMeta && pts.pts2 < limiteMeta;
+        });
+
+        cachePuntosMesas = puntosPorMesa;
+        cacheMesasActivas = mesasActivas;
+        localStorage.setItem('domino_cache_mesas_activas', JSON.stringify(mesasActivas));
+        localStorage.setItem('domino_cache_puntos_mesas', JSON.stringify(puntosPorMesa));
+        renderizarMesasActivasLocales();
+    }
+
+    async function cerrarMesa(mesaId) {
+        if (!confirm('¿Deseas finalizar y cerrar esta mesa?')) return;
+        const { error } = await sbClient.from('mesas').delete().eq('id', mesaId);
+        if (error) mostrarError('Error: ' + error.message);
+        else refrescarTodo();
+    }
+
+    async function cargarHistorialCerradoAdmin() {
+        const { data, error } = await sbClient.from('manos').select('*').eq('anulada', false).order('id', { ascending: true });
+        if (error) {
+            document.getElementById('cuerpo-tabla-historial').innerHTML = `<tr><td colspan="9" style="text-align: center; color: var(--accent-red);">Error al cargar historial.</td></tr>`;
+            return;
+        }
+
+        const mesasAcumulado = {};
+        (data || []).forEach(m => {
+            const mesaId = m.mesa_id;
+            if (!mesasAcumulado[mesaId]) {
+                const mesaInfo = cacheMesas[mesaId] || { id: mesaId, limite_puntos: 200 };
+                mesasAcumulado[mesaId] = {
+                    mesa_id: mesaId,
+                    mesas: mesaInfo,
+                    puntos_pareja1: 0,
+                    puntos_pareja2: 0,
+                    rondas: 0,
+                    created_at: m.created_at,
+                    finalizada: false,
+                    manos_ids: []
+                };
+            }
+            const partida = mesasAcumulado[mesaId];
+            partida.puntos_pareja1 += (m.puntos_pareja1 || 0);
+            partida.puntos_pareja2 += (m.puntos_pareja2 || 0);
+            partida.rondas++;
+            partida.manos_ids.push(m);
+            if (m.created_at) partida.created_at = m.created_at;
+            const limite = partida.mesas.limite_puntos || 200;
+            if (partida.puntos_pareja1 >= limite || partida.puntos_pareja2 >= limite) partida.finalizada = true;
+        });
+
+        cachePartidasCerradas = Object.values(mesasAcumulado)
+            .filter(p => p.finalizada || p.rondas > 0)
+            .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+
+        localStorage.setItem('domino_cache_admin_historial_v1', JSON.stringify(cachePartidasCerradas));
+        renderizarHistorialLocal();
+    }
+
+    function aplicarFiltrosHistorial() {
+        const desde = document.getElementById('filtro-desde').value;
+        const hasta = document.getElementById('filtro-hasta').value;
+        const jugadorTxt = document.getElementById('filtro-jugador').value.toLowerCase();
+        const modalidad = document.getElementById('filtro-modalidad').value;
+
+        listaFiltradaHistorial = cachePartidasCerradas.filter(m => {
+            if (!m.mesas) return false;
+            const fechaMano = m.created_at ? m.created_at.split('T')[0] : '';
+            if (desde && fechaMano && fechaMano < desde) return false;
+            if (hasta && fechaMano && fechaMano > hasta) return false;
+            if (modalidad && m.mesas.limite_puntos != modalidad) return false;
+
+            if (jugadorTxt) {
+                const j1 = (cachePerfiles[m.mesas.jugador1_id] || '').toLowerCase();
+                const j2 = (cachePerfiles[m.mesas.jugador2_id] || '').toLowerCase();
+                const j3 = (cachePerfiles[m.mesas.jugador3_id] || '').toLowerCase();
+                const j4 = (cachePerfiles[m.mesas.jugador4_id] || '').toLowerCase();
+                if (!j1.includes(jugadorTxt) && !j2.includes(jugadorTxt) && !j3.includes(jugadorTxt) && !j4.includes(jugadorTxt)) return false;
+            }
+            return true;
+        });
+
+        paginaActualHistorial = 1;
+        actualizarEstadisticasResumen();
+        renderizarTablaHistorial();
+    }
+
+    function actualizarEstadisticasResumen() {
+        const total = listaFiltradaHistorial.length;
+        let lisas = 0, pts = 0;
+        listaFiltradaHistorial.forEach(m => {
+            const pA = m.puntos_pareja1 || 0;
+            const pB = m.puntos_pareja2 || 0;
+            pts += (pA + pB);
+            if (pA === 0 || pB === 0) lisas++;
+        });
+        document.getElementById('stat-total').innerText = total;
+        document.getElementById('stat-lisas').innerText = lisas;
+        document.getElementById('stat-pts-prom').innerText = total > 0 ? Math.round(pts / total) : 0;
+    }
+
+    function renderizarTablaHistorial() {
+        const tbody = document.getElementById('cuerpo-tabla-historial');
+        const inicio = (paginaActualHistorial - 1) * porPaginaHistorial;
+        const fin = inicio + porPaginaHistorial;
+        const paginaItems = listaFiltradaHistorial.slice(inicio, fin);
+
+        if (paginaItems.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="9" style="text-align: center; color: var(--text-muted); padding: 15px;">No se encontraron partidas.</td></tr>`;
+            document.getElementById('info-paginacion').innerText = `Mostrando 0 partidas`;
+            document.getElementById('controles-paginacion').innerHTML = '';
+            return;
+        }
+
+        tbody.innerHTML = '';
+        paginaItems.forEach(m => {
+            const mesa = m.mesas;
+            
+            let fechaStr = 'N/A';
+            if (m.created_at) {
+                const fechaObj = new Date(m.created_at);
+                const fDate = fechaObj.toLocaleDateString();
+                const fTime = fechaObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                fechaStr = `<span class="history-date-main">${fDate}</span><span class="history-time">${fTime}</span>`;
+            }
+
+            const jA1 = cachePerfiles[mesa.jugador1_id] || 'J1';
+            const jA2 = cachePerfiles[mesa.jugador3_id] || 'J3';
+            const jB1 = cachePerfiles[mesa.jugador2_id] || 'J2';
+            const jB2 = cachePerfiles[mesa.jugador4_id] || 'J4';
+            const ptsA = m.puntos_pareja1 || 0;
+            const ptsB = m.puntos_pareja2 || 0;
+
+            let ganadorTxt = 'Empate', ganadorClase = 'secondary';
+            if (ptsA > ptsB) { ganadorTxt = 'Equipo A'; ganadorClase = 'a'; }
+            else if (ptsB > ptsA) { ganadorTxt = 'Equipo B'; ganadorClase = 'b'; }
+
+            const esLisa = (ptsA === 0 || ptsB === 0) ? '<span class="badge-lisa">Sí</span>' : 'No';
+
+            tbody.innerHTML += `
+                <tr>
+                    <td class="history-date">${fechaStr}</td>
+                    <td class="history-mode"><span class="badge-modalidad">${mesa.limite_puntos || 200}</span></td>
+                    <td class="history-team history-team-a" style="font-size: 0.8rem;">${jA1} & ${jA2}</td>
+                    <td class="history-score history-score-a" style="text-align: center; font-weight: bold; ${ptsA > ptsB ? 'color: var(--accent-green);' : ''}">${ptsA}</td>
+                    <td class="history-team history-team-b" style="font-size: 0.8rem;">${jB1} & ${jB2}</td>
+                    <td class="history-score history-score-b" style="text-align: center; font-weight: bold; ${ptsB > ptsA ? 'color: var(--accent-green);' : ''}">${ptsB}</td>
+                    <td class="history-winner"><span class="badge-equipo ${ganadorClase}">${ganadorTxt}</span></td>
+                    <td class="history-lisa" style="text-align: center;">${esLisa}</td>
+                    <td class="history-actions">
+                        <div class="action-btns">
+                            <button class="btn-icon btn-edit" onclick='abrirModalEditar("${m.mesa_id}")' title="Editar Partida">✏️</button>
+                            <button class="btn-icon btn-reject" onclick='abrirModalEliminar("${m.mesa_id}")' title="Eliminar Partida">🗑️</button>
+                        </div>
+                    </td>
+                </tr>
+            `;
+        });
+
+        const totalPags = Math.ceil(listaFiltradaHistorial.length / porPaginaHistorial) || 1;
+        document.getElementById('info-paginacion').innerText = `Mostrando ${inicio + 1} - ${Math.min(fin, listaFiltradaHistorial.length)} de ${listaFiltradaHistorial.length}`;
+
+        let htmlPags = `<button class="pag-btn" ${paginaActualHistorial === 1 ? 'disabled' : ''} onclick="cambiarPaginaHistorial(-1)">Anterior</button>`;
+        htmlPags += `<button class="pag-btn active">${paginaActualHistorial}</button>`;
+        htmlPags += `<button class="pag-btn" ${paginaActualHistorial >= totalPags ? 'disabled' : ''} onclick="cambiarPaginaHistorial(1)">Siguiente</button>`;
+        document.getElementById('controles-paginacion').innerHTML = htmlPags;
+    }
+
+    function cambiarPaginaHistorial(dir) {
+        const totalPags = Math.ceil(listaFiltradaHistorial.length / porPaginaHistorial);
+        paginaActualHistorial += dir;
+        if (paginaActualHistorial < 1) paginaActualHistorial = 1;
+        if (paginaActualHistorial > totalPags) paginaActualHistorial = totalPags;
+        renderizarTablaHistorial();
+    }
+
+    function generarOpcionesUsuarios(selectedId) {
+        let options = '<option value="">-- Seleccionar Jugador --</option>';
+        todosLosUsuarios.forEach(u => {
+            if (u.estado === 'inactivo' && u.id !== selectedId) return;
+            const selected = u.id === selectedId ? 'selected' : '';
+            const nombre = u.nombre_completo || u.username || 'Sin nombre';
+            const estadoTxt = u.estado === 'inactivo' ? ' (Inactivo)' : '';
+            options += `<option value="${u.id}" ${selected}>${nombre}${estadoTxt} ${u.username ? '(@' + u.username + ')' : ''}</option>`;
+        });
+        return options;
+    }
+
+    function formatearFechaLocalParaInput(valorFecha) {
+        if (!valorFecha) return '';
+        const fecha = new Date(valorFecha);
+        if (Number.isNaN(fecha.getTime())) return '';
+
+        const pad = valor => String(valor).padStart(2, '0');
+        return `${fecha.getFullYear()}-${pad(fecha.getMonth() + 1)}-${pad(fecha.getDate())}T${pad(fecha.getHours())}:${pad(fecha.getMinutes())}`;
+    }
+
+    function abrirModalEditar(mesaId) {
+        const partida = cachePartidasCerradas.find(p => p.mesa_id === mesaId);
+        if (!partida) return;
+        const mesa = partida.mesas;
+
+        const modalContainer = document.getElementById('modal-container');
+        let rondasHtml = '';
+        
+        partida.manos_ids.forEach((mano, idx) => {
+            rondasHtml += `
+                <div class="ronda-row" data-mano-id="${mano.id || ''}" data-created-at="${mano.created_at || ''}">
+                    <span style="font-weight: bold; color: var(--text-muted); font-size: 0.8rem;">Ronda ${idx + 1}</span>
+                    <input type="number" class="edit-p1" value="${mano.puntos_pareja1 || 0}" placeholder="Pts Equipo A">
+                    <input type="number" class="edit-p2" value="${mano.puntos_pareja2 || 0}" placeholder="Pts Equipo B">
+                    <button type="button" class="btn-icon btn-reject" style="padding: 6px 8px; font-size: 0.75rem;" onclick="this.closest('.ronda-row').remove(); reenumerarRondas();" title="Eliminar ronda">✕</button>
+                </div>
+            `;
+        });
+
+        const fechaOriginalISO = partida.created_at || '';
+        const fechaOriginalInput = formatearFechaLocalParaInput(fechaOriginalISO);
+        const fechaMesaOriginalISO = mesa.created_at || mesa.creado_en || '';
+
+        modalContainer.innerHTML = `
+            <div class="modal-overlay">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <span>Editar Partida (Mesa #${mesa.id ? mesa.id.slice(0,6) : ''})</span>
+                        <button class="modal-close" onclick="cerrarModal()">✕</button>
+                    </div>
+                    <div class="form-grid">
+                        <div class="input-group">
+                            <div class="filter-group" style="flex: 1;">
+                                <label>Fecha y hora</label>
+                                <input type="datetime-local" id="edit-fecha" step="60" value="${fechaOriginalInput}" required>
+                            </div>
+                            <div class="filter-group" style="flex: 1;">
+                                <label>Modalidad (Meta de Puntos)</label>
+                                <select id="edit-meta">
+                                    <option value="100" ${mesa.limite_puntos == 100 ? 'selected' : ''}>100 puntos</option>
+                                    <option value="150" ${mesa.limite_puntos == 150 ? 'selected' : ''}>150 puntos</option>
+                                    <option value="200" ${mesa.limite_puntos == 200 ? 'selected' : ''}>200 puntos</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div style="font-weight: bold; font-size: 0.85rem; color: var(--accent); margin-top: 4px;">Asignación de Jugadores:</div>
+                        <div class="input-group">
+                            <div class="filter-group" style="flex: 1;">
+                                <label style="color: var(--pareja1);">Jugador 1 (Eq. A)</label>
+                                <select id="edit-j1">${generarOpcionesUsuarios(mesa.jugador1_id)}</select>
+                            </div>
+                            <div class="filter-group" style="flex: 1;">
+                                <label style="color: var(--pareja1);">Jugador 3 (Eq. A)</label>
+                                <select id="edit-j3">${generarOpcionesUsuarios(mesa.jugador3_id)}</select>
+                            </div>
+                        </div>
+                        <div class="input-group">
+                            <div class="filter-group" style="flex: 1;">
+                                <label style="color: var(--pareja2);">Jugador 2 (Eq. B)</label>
+                                <select id="edit-j2">${generarOpcionesUsuarios(mesa.jugador2_id)}</select>
+                            </div>
+                            <div class="filter-group" style="flex: 1;">
+                                <label style="color: var(--pareja2);">Jugador 4 (Eq. B)</label>
+                                <select id="edit-j4">${generarOpcionesUsuarios(mesa.jugador4_id)}</select>
+                            </div>
+                        </div>
+
+                        <div style="font-weight: bold; font-size: 0.85rem; color: var(--accent); margin-top: 6px;">Puntuación por Rondas:</div>
+                        <div class="rondas-grid" id="container-rondas-edit">
+                            ${rondasHtml}
+                        </div>
+
+                        <button type="button" class="btn" style="background: var(--card-inner); border: 1px dashed var(--border-color); color: var(--accent); margin-top: 5px; font-size: 0.85rem;" onclick="agregarFilaRonda()">+ Agregar Ronda</button>
+                    </div>
+                    <div style="display: flex; gap: 10px; margin-top: 10px;">
+                        <button class="btn" style="background: var(--card-inner); border: 1px solid var(--border-color);" onclick="cerrarModal()">Cancelar</button>
+                        <button class="btn btn-green" onclick="guardarEdicionPartida('${mesa.id}')">Guardar Cambios</button>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        const inputFecha = document.getElementById('edit-fecha');
+        if (inputFecha) {
+            inputFecha.dataset.originalValue = fechaOriginalInput;
+            inputFecha.dataset.originalIso = fechaOriginalISO;
+            inputFecha.dataset.originalMesaIso = fechaMesaOriginalISO;
+        }
+    }
+
+    function agregarFilaRonda() {
+        const container = document.getElementById('container-rondas-edit');
+        const numRonda = container.children.length + 1;
+        const nuevaFila = document.createElement('div');
+        nuevaFila.className = 'ronda-row';
+        nuevaFila.setAttribute('data-mano-id', '');
+        nuevaFila.setAttribute('data-created-at', '');
+        nuevaFila.innerHTML = `
+            <span style="font-weight: bold; color: var(--text-muted); font-size: 0.8rem;">Ronda ${numRonda}</span>
+            <input type="number" class="edit-p1" value="0" placeholder="Pts Equipo A">
+            <input type="number" class="edit-p2" value="0" placeholder="Pts Equipo B">
+            <button type="button" class="btn-icon btn-reject" style="padding: 6px 8px; font-size: 0.75rem;" onclick="this.closest('.ronda-row').remove(); reenumerarRondas();" title="Eliminar ronda">✕</button>
+        `;
+        container.appendChild(nuevaFila);
+    }
+
+    function reenumerarRondas() {
+        const filas = document.querySelectorAll('#container-rondas-edit .ronda-row');
+        filas.forEach((fila, idx) => {
+            const etiqueta = fila.querySelector('span');
+            if (etiqueta) etiqueta.innerText = `Ronda ${idx + 1}`;
+        });
+    }
+
+    async function recalcularEloTrasCambioHistorial() {
+        try {
+            const { data: resultado, error } = await sbClient.rpc('recalcular_elo');
+            if (error) throw error;
+            if (resultado?.success === false) {
+                throw new Error(resultado.error || 'Supabase no pudo reconstruir el Elo.');
+            }
+            console.log('[ADMIN | ELO] Historial recalculado:', resultado);
+            return true;
+        } catch (error) {
+            console.error('[ADMIN | ELO] Error al recalcular:', error);
+            mostrarError('El historial fue modificado, pero no se pudo actualizar el Elo: ' + (error.message || 'error desconocido'));
+            return false;
+        }
+    }
+
+    async function guardarEdicionPartida(mesaId) {
+        const inputFecha = document.getElementById('edit-fecha');
+        const nuevaFecha = inputFecha.value;
+        const nuevaMeta = document.getElementById('edit-meta').value;
+        const nuevoJ1 = document.getElementById('edit-j1').value;
+        const nuevoJ2 = document.getElementById('edit-j2').value;
+        const nuevoJ3 = document.getElementById('edit-j3').value;
+        const nuevoJ4 = document.getElementById('edit-j4').value;
+        const filasRondas = document.querySelectorAll('#container-rondas-edit .ronda-row');
+
+        const fechaOriginalInput = inputFecha.dataset.originalValue || '';
+        const fechaOriginalISO = inputFecha.dataset.originalIso || '';
+        const fechaMesaOriginalISO = inputFecha.dataset.originalMesaIso || '';
+        const fechaFueModificada = Boolean(nuevaFecha && nuevaFecha !== fechaOriginalInput);
+
+        let fechaSeleccionadaISO = null;
+        let deltaFechaMs = 0;
+
+        if (fechaFueModificada) {
+            const fechaSeleccionada = new Date(nuevaFecha);
+            if (Number.isNaN(fechaSeleccionada.getTime())) {
+                alert('La fecha y hora seleccionadas no son válidas.');
+                return;
+            }
+
+            fechaSeleccionadaISO = fechaSeleccionada.toISOString();
+
+            const fechaOriginal = new Date(fechaOriginalISO);
+            if (!Number.isNaN(fechaOriginal.getTime())) {
+                deltaFechaMs = fechaSeleccionada.getTime() - fechaOriginal.getTime();
+            }
+        }
+
+        const datosMesa = {
+            limite_puntos: parseInt(nuevaMeta),
+            jugador1_id: nuevoJ1 || null,
+            jugador2_id: nuevoJ2 || null,
+            jugador3_id: nuevoJ3 || null,
+            jugador4_id: nuevoJ4 || null
+        };
+
+        // Si el usuario no toca la fecha/hora, NO modificamos created_at.
+        // Así la mesa conserva exactamente su fecha y hora originales.
+        if (fechaFueModificada && fechaSeleccionadaISO) {
+            const fechaMesaOriginal = new Date(fechaMesaOriginalISO);
+            datosMesa.created_at = !Number.isNaN(fechaMesaOriginal.getTime())
+                ? new Date(fechaMesaOriginal.getTime() + deltaFechaMs).toISOString()
+                : fechaSeleccionadaISO;
+        }
+
+        await sbClient.from('mesas').update(datosMesa).eq('id', mesaId);
+
+        const { data: manosActuales } = await sbClient.from('manos').select('id').eq('mesa_id', mesaId);
+        const idsOriginales = (manosActuales || []).map(m => m.id);
+        const idsEnFormulario = [];
+
+        for (let row of filasRondas) {
+            const manoId = row.getAttribute('data-mano-id');
+            const p1 = parseInt(row.querySelector('.edit-p1').value) || 0;
+            const p2 = parseInt(row.querySelector('.edit-p2').value) || 0;
+
+            let objData = {
+                mesa_id: mesaId,
+                puntos_pareja1: p1,
+                puntos_pareja2: p2,
+                anulada: false
+            };
+
+            if (fechaFueModificada && fechaSeleccionadaISO) {
+                const fechaManoOriginal = new Date(row.dataset.createdAt || '');
+                objData.created_at = !Number.isNaN(fechaManoOriginal.getTime())
+                    ? new Date(fechaManoOriginal.getTime() + deltaFechaMs).toISOString()
+                    : fechaSeleccionadaISO;
+            } else if (!manoId) {
+                // Una ronda nueva necesita fecha. Si el usuario no cambió la
+                // fecha de la partida, usamos la fecha/hora original como base
+                // en vez de dejar que Supabase le asigne la hora actual.
+                const fechaBase = new Date(fechaOriginalISO || nuevaFecha);
+                if (!Number.isNaN(fechaBase.getTime())) {
+                    objData.created_at = fechaBase.toISOString();
+                }
+            }
+
+            if (manoId && manoId !== '') {
+                idsEnFormulario.push(manoId);
+                await sbClient.from('manos').update(objData).eq('id', manoId);
+            } else {
+                await sbClient.from('manos').insert([objData]);
+            }
+        }
+
+        const idsParaEliminar = idsOriginales.filter(id => !idsEnFormulario.includes(id));
+        if (idsParaEliminar.length > 0) {
+            await sbClient.from('manos').delete().in('id', idsParaEliminar);
+        }
+
+        await recalcularEloTrasCambioHistorial();
+        cerrarModal();
+        await refrescarTodo();
+    }
+
+    function abrirModalEliminar(mesaId) {
+        const modalContainer = document.getElementById('modal-container');
+        modalContainer.innerHTML = `
+            <div class="modal-overlay">
+                <div class="modal-content" style="max-width: 400px; text-align: center;">
+                    <div class="modal-header" style="justify-content: center; border: none; padding-bottom: 0;">
+                        <span style="color: var(--accent-red); font-size: 1.3rem;">⚠️ ¿Eliminar partida?</span>
+                    </div>
+                    <p style="color: var(--text-muted); font-size: 0.9rem;">Esta acción no se puede deshacer. Se eliminarán permanentemente las rondas asociadas a esta mesa.</p>
+                    <div style="display: flex; gap: 10px; margin-top: 10px;">
+                        <button class="btn" style="background: var(--card-inner); border: 1px solid var(--border-color);" onclick="cerrarModal()">Cancelar</button>
+                        <button class="btn btn-reject" onclick="ejecutarEliminacionPartida('${mesaId}')">Eliminar</button>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    async function ejecutarEliminacionPartida(mesaId) {
+        await sbClient.from('manos').delete().eq('mesa_id', mesaId);
+        await sbClient.from('mesas').delete().eq('id', mesaId);
+
+        await recalcularEloTrasCambioHistorial();
+        cerrarModal();
+        await refrescarTodo();
+    }
+
+    function cerrarModal() {
+        document.getElementById('modal-container').innerHTML = '';
+    }
+
+    function exportarCSV() {
+        if (listaFiltradaHistorial.length === 0) {
+            alert('No hay datos para exportar.');
+            return;
+        }
+        let csv = 'Fecha y Hora,Modalidad,Equipo A,Puntos A,Equipo B,Puntos B,Ganador,Lisa\n';
+        listaFiltradaHistorial.forEach(m => {
+            const mesa = m.mesas;
+            const fecha = m.created_at ? `"${new Date(m.created_at).toLocaleString()}"` : '"N/A"';
+            const eA = `"${cachePerfiles[mesa.jugador1_id]} & ${cachePerfiles[mesa.jugador3_id]}"`;
+            const eB = `"${cachePerfiles[mesa.jugador2_id]} & ${cachePerfiles[mesa.jugador4_id]}"`;
+            const pA = m.puntos_pareja1 || 0;
+            const pB = m.puntos_pareja2 || 0;
+            const ganador = pA > pB ? 'Equipo A' : (pB > pA ? 'Equipo B' : 'Empate');
+            const lisa = (pA === 0 || pB === 0) ? 'Sí' : 'No';
+            csv += `${fecha},${mesa.limite_puntos},${eA},${pA},${eB},${pB},${ganador},${lisa}\n`;
+        });
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'historial_partidas_domino.csv';
+        a.click();
+    }
+
+    async function crearUsuarioManual(e) {
+        e.preventDefault();
+        const inputNombre = document.getElementById('nuevo-nombre');
+        const inputUsername = document.getElementById('nuevo-username');
+        const selectRol = document.getElementById('nuevo-rol');
+        const rolSeleccionado = selectRol.value;
+
+        if (rolSeleccionado === 'admin' && usuarioActualRol !== 'super_admin') {
+            alert('Acción no permitida. Solo el Super Administrador puede crear perfiles con rol de Administrador.');
+            return;
+        }
+
+        const nuevoId = crypto.randomUUID();
+
+        const { error } = await sbClient.from('perfiles').insert([{ 
+            id: nuevoId,
+            nombre_completo: inputNombre.value.trim(), 
+            username: inputUsername.value.trim(),
+            rol: rolSeleccionado,
+            es_manual: true,
+            estado: 'aprobado'
+        }]);
+
+        if (error) {
+            console.error('Error detallado de Supabase:', error);
+            mostrarError('Error al crear perfil: ' + error.message);
+        } else { 
+            inputNombre.value = ''; 
+            inputUsername.value = '';
+            alert('Perfil creado correctamente.'); 
+            await refrescarTodo(); 
+        }
+    }
+
+    function ordenarUsuariosPorRol(lista) {
+        const prioridadRol = {
+            super_admin: 0,
+            admin: 1,
+            jugador: 2,
+            invitado: 3
+        };
+
+        return [...lista].sort((a, b) => {
+            const estadoA = (a.estado || '').trim().toLowerCase();
+            const estadoB = (b.estado || '').trim().toLowerCase();
+            const rolA = (a.rol || '').trim().toLowerCase();
+            const rolB = (b.rol || '').trim().toLowerCase();
+
+            const prioridadA = estadoA === 'inactivo' ? 4 : (prioridadRol[rolA] ?? 5);
+            const prioridadB = estadoB === 'inactivo' ? 4 : (prioridadRol[rolB] ?? 5);
+
+            if (prioridadA !== prioridadB) return prioridadA - prioridadB;
+
+            const nombreA = a.nombre_completo || a.username || '';
+            const nombreB = b.nombre_completo || b.username || '';
+            return nombreA.localeCompare(nombreB, 'es', { sensitivity: 'base' });
+        });
+    }
+
+    async function cargarUsuarios() {
+        const { data: perfiles, error } = await sbClient.from('perfiles').select('*').order('nombre_completo', { ascending: true });
+        if (error) return;
+        todosLosUsuarios = ordenarUsuariosPorRol(perfiles || []);
+        localStorage.setItem('domino_cache_admin_usuarios_v1', JSON.stringify(todosLosUsuarios));
+        renderizarTablaUsuarios(todosLosUsuarios);
+    }
+
+    function renderizarTablaUsuarios(lista) {
+        const tbody = document.getElementById('lista-usuarios');
+        const listaOrdenada = ordenarUsuariosPorRol(lista);
+        const firmaNueva = firmaDatosAdmin({ listaOrdenada, online: [...onlineUsersSet].sort(), usuarioActualRol });
+        if (firmaNueva === firmaUsuariosAdmin) return;
+        firmaUsuariosAdmin = firmaNueva;
+        tbody.innerHTML = '';
+        if (listaOrdenada.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="3" style="color: var(--text-muted); text-align: center;">No hay usuarios.</td></tr>';
+            return;
+        }
+        listaOrdenada.forEach(u => {
+            let badgeClass = 'badge-jugador', rolTexto = 'Jugador';
+            if (u.estado === 'inactivo') {
+                badgeClass = 'badge-inactivo';
+                rolTexto = 'Inactivo';
+            } else {
+                if (u.rol === 'pendiente') { badgeClass = 'badge-pendiente'; rolTexto = 'Pendiente'; }
+                else if (u.rol === 'invitado') { badgeClass = 'badge-invitado'; rolTexto = 'Invitado'; }
+                else if (u.rol === 'admin') { badgeClass = 'badge-admin'; rolTexto = 'Admin'; }
+                else if (u.rol === 'super_admin') { badgeClass = 'badge-superadmin'; rolTexto = 'Super Admin'; }
+            }
+
+            const isOnline = onlineUsersSet.has(u.id);
+            const statusDot = isOnline 
+                ? `<span title="Conectado" style="display:inline-block; width:10px; height:10px; background-color:var(--accent-green); border-radius:50%; margin-right:6px;"></span>` 
+                : `<span title="Offline" style="display:inline-block; width:10px; height:10px; background-color:var(--accent-red); border-radius:50%; margin-right:6px;"></span>`;
+
+            let btnAdminHTML = '';
+            let btnEliminarHTML = '';
+            let btnEstadoHTML = '';
+            const esSuperAdminActual = usuarioActualRol === 'super_admin';
+
+            if (u.rol === 'super_admin') {
+                btnAdminHTML = `<span style="font-size:0.75rem; color:var(--role-superadmin); font-weight:bold;">Propietario</span>`;
+            } else {
+                if (u.estado === 'inactivo') {
+                    btnEstadoHTML = `<button class="btn-icon btn-approve" onclick="cambiarEstadoUsuario('${u.id}', 'aprobado')" title="Activar Perfil">🟢 Activar</button>`;
+                } else {
+                    btnEstadoHTML = `<button class="btn-icon btn-invitado-action" onclick="cambiarEstadoUsuario('${u.id}', 'inactivo')" title="Poner Inactivo">💤 Inactivar</button>`;
+                }
+
+                let btnInvitado = (!esSuperAdminActual && u.rol === 'admin') ? '' : (u.rol === 'invitado' ? 
+                    `<button class="btn-icon btn-approve" onclick="cambiarRolUsuario('${u.id}', 'jugador')" title="Pasar a Jugador">🟢 Jugador</button>` : 
+                    `<button class="btn-icon btn-invitado-action" onclick="cambiarRolUsuario('${u.id}', 'invitado')" title="Pasar a Invitado">🟡 Invitado</button>`);
+
+                let btnAdminToggle = '';
+                if (esSuperAdminActual) {
+                    btnAdminToggle = u.rol === 'admin' ? 
+                        `<button class="btn-icon btn-reject" onclick="cambiarRolUsuario('${u.id}', 'jugador')">Quitar Admin</button>` : 
+                        `<button class="btn-icon btn-admin" onclick="cambiarRolUsuario('${u.id}', 'admin')">⭐ Admin</button>`;
+                }
+
+                btnAdminHTML = `${btnInvitado} ${btnAdminToggle}`;
+
+                const adminPuedeEliminar =
+                    usuarioActualRol === 'admin' &&
+                    u.es_manual === true &&
+                    u.rol !== 'admin';
+
+                if (esSuperAdminActual || adminPuedeEliminar) {
+                    btnEliminarHTML = `<button class="btn-icon btn-reject" onclick="eliminarUsuarioTabla('${u.id}')" title="Eliminar solo si no tiene historial">🗑️</button>`;
+                }
+            }
+
+            const safeNombre = (u.nombre_completo || '').replace(/'/g, "\\'");
+            const safeUsername = (u.username || '').replace(/'/g, "\\'");
+
+            let btnEditarHTML = '';
+
+            const puedeEditar =
+                usuarioActualRol === 'super_admin' ||
+                (usuarioActualRol === 'admin' && u.es_manual === true);
+
+            if (puedeEditar) {
+                btnEditarHTML = `
+                    <button class="btn-icon btn-edit"
+                        onclick="editarDatosUsuario('${u.id}', '${safeNombre}', '${safeUsername}')"
+                        title="Editar Nombre y Usuario">
+                        ✏️
+                    </button>
+                `;
+            }
+
+            tbody.innerHTML += `
+                <tr>
+                    <td class="user-identity">
+                        <div class="user-name">
+                            ${statusDot} ${u.nombre_completo || 'Sin nombre'}
+                        </div>
+                        <div class="user-handle">
+                            @${u.username || 'sin_usuario'}
+                        </div>
+                    </td>
+                    <td class="user-role"><span class="badge-rol ${badgeClass}">${rolTexto}</span></td>
+                    <td class="user-actions">
+                        <div class="action-btns">
+                            ${btnEditarHTML}
+                            ${btnEstadoHTML}
+                            ${btnAdminHTML}
+                            ${btnEliminarHTML}
+                        </div>
+                    </td>
+                </tr>
+            `;
+        });
+    }
+
+    async function cambiarEstadoUsuario(userId, nuevoEstado) {
+        const { error } = await sbClient.rpc('cambiar_estado_perfil', {
+            p_perfil_id: userId,
+            p_nuevo_estado: nuevoEstado
+        });
+
+        if (error) {
+            console.error('Error cambiar estado:', error);
+            alert('Error: ' + error.message);
+            mostrarError('Error: ' + error.message);
+        } else {
+            await refrescarTodo();
+        }
+    }
+
+    async function cambiarRolUsuario(userId, nuevoRol) {
+        const usuarioObjetivo = todosLosUsuarios.find(u => u.id === userId);
+        const rolObjetivo = (usuarioObjetivo?.rol || '').trim().toLowerCase();
+
+        if (usuarioActualRol !== 'super_admin' && (nuevoRol === 'admin' || rolObjetivo === 'admin' || rolObjetivo === 'super_admin')) {
+            alert('Solo el Super Administrador puede asignar o modificar permisos de administrador.');
+            return;
+        }
+
+        const { error } = await sbClient.rpc('cambiar_rol_perfil', {
+            p_perfil_id: userId,
+            p_nuevo_rol: nuevoRol
+        });
+
+        if (error) {
+            console.error('Error cambiar rol:', error);
+            alert('Error: ' + error.message);
+            mostrarError('Error: ' + error.message);
+        } else {
+            await refrescarTodo();
+        }
+    }
+
+    async function editarDatosUsuario(userId, nombreActual, usernameActual) {
+        const nuevoNombre = prompt(
+            'Editar nombre completo del jugador:',
+            nombreActual || ''
+        );
+        if (nuevoNombre === null) return;
+
+        const nuevoUsername = prompt(
+            'Editar nombre de usuario / alias (@):',
+            usernameActual || ''
+        );
+        if (nuevoUsername === null) return;
+
+        if (!nuevoNombre.trim()) {
+            alert('El nombre completo no puede estar vacío.');
+            return;
+        }
+
+        const { error } = await sbClient.rpc('editar_perfil', {
+            p_perfil_id: userId,
+            p_nombre_completo: nuevoNombre.trim(),
+            p_username: nuevoUsername.trim()
+                ? nuevoUsername.trim()
+                : null
+        });
+
+        if (error) {
+            console.error('Error al editar perfil:', error);
+            alert('Error al editar: ' + error.message);
+            mostrarError('Error al editar: ' + error.message);
+            return;
+        }
+
+        alert('Perfil actualizado correctamente.');
+        await refrescarTodo();
+    }
+
+    async function eliminarUsuarioTabla(userId) {
+        if (usuarioActualRol !== 'admin' && usuarioActualRol !== 'super_admin') {
+            alert('No tienes permiso para eliminar perfiles.');
+            return;
+        }
+
+        const usuarioObjetivo = todosLosUsuarios.find(u => u.id === userId);
+        if (!usuarioObjetivo) {
+            alert('No se encontró el perfil seleccionado. Actualiza la página e inténtalo nuevamente.');
+            return;
+        }
+
+        const rolObjetivo = (usuarioObjetivo.rol || '').trim().toLowerCase();
+        const esSuperAdminActual = usuarioActualRol === 'super_admin';
+
+        if (rolObjetivo === 'super_admin') {
+            alert('El perfil del propietario no se puede eliminar.');
+            return;
+        }
+
+        if (!esSuperAdminActual && (usuarioObjetivo.es_manual !== true || rolObjetivo === 'admin')) {
+            alert('Como Administrador solo puedes eliminar perfiles manuales creados por error. Los perfiles de administradores y las cuentas registradas están protegidos.');
+            return;
+        }
+
+        const nombreUsuario = usuarioObjetivo.nombre_completo || usuarioObjetivo.username || 'este perfil';
+
+        if (!confirm(`¿Eliminar definitivamente a "${nombreUsuario}"?\n\nSolo se eliminará si no tiene mesas, partidas, torneos ni otro historial asociado.`)) return;
+
+        const { data: perfilesEliminados, error } = await sbClient
+            .from('perfiles')
+            .delete()
+            .eq('id', userId)
+            .select('id');
+
+        if (error) {
+            const tieneRelacion = error.code === '23503' || /foreign key|violates.*constraint/i.test(error.message || '');
+            const mensaje = tieneRelacion
+                ? `No se puede eliminar a "${nombreUsuario}" porque ya tiene historial asociado. Usa “Inactivar” para conservar sus datos.`
+                : 'No se pudo eliminar el perfil. Verifica tus permisos e inténtalo nuevamente.';
+
+            mostrarError(mensaje);
+            alert(mensaje);
+            console.error('Detalle del error al eliminar perfil:', error);
+            return;
+        }
+
+        if (!perfilesEliminados || perfilesEliminados.length === 0) {
+            const mensaje = 'El perfil no fue eliminado. La base de datos no autorizó la operación o el perfil ya no existe.';
+            mostrarError(mensaje);
+            alert(mensaje);
+            return;
+        }
+
+        alert(`Perfil de "${nombreUsuario}" eliminado correctamente. No tenía historial asociado.`);
+        await refrescarTodo();
+    }
+
+    function filtrarTablaUsuarios() {
+        const q = document.getElementById('filtro-buscar').value.toLowerCase();
+        renderizarTablaUsuarios(todosLosUsuarios.filter(u => 
+            (u.nombre_completo || '').toLowerCase().includes(q) || 
+            (u.username || '').toLowerCase().includes(q)
+        ));
+    }
+</script>
+</body>
+</html>
