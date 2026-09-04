@@ -1,0 +1,3607 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <script src="offline-mode.js"></script>
+    <script src="vista-app.js"></script>
+    <title>Club Dominó y Romo — Lobby</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="app-notifications.js"></script>
+    <link rel="icon" type="image/png" href="logo.png">
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#0b1120">
+    <!-- Archivo de caché centralizado -->
+    <script src="cache.js"></script>
+    <script>
+        // Carga inmediata del tema antes de renderizar
+        (function() {
+            const savedTheme = localStorage.getItem('theme') || 'dark';
+            if (savedTheme === 'light') {
+                document.documentElement.classList.add('light-mode');
+            }
+        })();
+    </script>
+    <style>
+    :root {
+        --bg-color: #0b1120;
+        --card-bg: #152238;
+        --input-bg: #1e2d4a;
+        --border-color: #263859;
+        
+        --accent-blue: #2563eb;
+        --accent-blue-hover: #1d4ed8;
+        --accent-green: #10b981;
+        --accent-green-hover: #059669;
+        --accent-red: #ef4444;
+        --accent-purple: #8b5cf6;
+        --accent-amber: #f59e0b;
+        
+        --text: #ffffff;
+        --text-muted: #8e9bb0;
+        --cyan-title: #38bdf8;
+
+        --sub-bg: #0d1726;
+        --score-bg: #152238;
+        --table-border: rgba(255,255,255,0.05);
+        --progress-bg: #0b1120;
+    }
+
+    html.light-mode {
+        --bg-color: #f1f5f9;
+        --card-bg: #ffffff;
+        --input-bg: #f8fafc;
+        --border-color: #cbd5e1;
+        
+        --text: #0f172a;
+        --text-muted: #64748b;
+        --cyan-title: #0284c7;
+
+        --sub-bg: #f8fafc;
+        --score-bg: #f1f5f9;
+        --table-border: rgba(0,0,0,0.08);
+        --progress-bg: #e2e8f0;
+    }
+
+    * { 
+        box-sizing: border-box; 
+        margin: 0; 
+        padding: 0; 
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        -webkit-tap-highlight-color: transparent;
+    }
+
+    body { 
+        background-color: var(--bg-color); 
+        color: var(--text); 
+        padding: 16px 12px; 
+        display: flex; 
+        justify-content: center; 
+    }
+
+    .container { 
+        width: 100%; 
+        max-width: 520px; 
+        display: flex; 
+        flex-direction: column; 
+        gap: 16px; 
+    } 
+    
+    header { 
+        text-align: center; 
+        padding: 8px 0 12px 0; 
+    }
+    header h1 { 
+        font-size: 2rem; 
+        font-weight: 900; 
+        color: var(--cyan-title); 
+        letter-spacing: -0.5px;
+    }
+    header p { 
+        color: var(--text-muted); 
+        font-size: 0.9rem; 
+        margin-top: 2px;
+    }
+
+    .card { 
+        background: var(--card-bg); 
+        border-radius: 16px; 
+        padding: 18px; 
+        border: 1px solid var(--border-color); 
+    }
+
+    .galardon-card {
+        background: linear-gradient(135deg, #1c1404, #2c1a04);
+        border: 1px solid #f59e0b;
+        border-radius: 16px;
+        padding: 16px;
+        box-shadow: 0 4px 15px rgba(245, 158, 11, 0.15);
+    }
+    .galardon-header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 10px;
+    }
+    .galardon-header h3 {
+        font-size: 1.05rem;
+        font-weight: 800;
+        color: var(--accent-amber);
+    }
+    .on-fire-content {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        background: rgba(0, 0, 0, 0.25);
+        padding: 12px;
+        border-radius: 10px;
+        border: 1px solid rgba(245, 158, 11, 0.2);
+    }
+
+    .auth-tabs-box {
+        background: var(--sub-bg);
+        padding: 6px;
+        border-radius: 12px;
+        display: flex;
+        gap: 6px;
+        margin-bottom: 16px;
+        border: 1px solid var(--border-color);
+    }
+    
+    .tab-btn { 
+        flex: 1; 
+        min-height: 42px; 
+        background: transparent; 
+        border: none; 
+        color: var(--text-muted); 
+        font-size: 0.95rem; 
+        font-weight: 700; 
+        cursor: pointer; 
+        border-radius: 8px; 
+        transition: all 0.2s;
+    }
+    .tab-btn.active { 
+        background: var(--accent-blue); 
+        color: white; 
+    }
+
+    form { display: flex; flex-direction: column; gap: 12px; }
+    label { font-size: 0.85rem; color: var(--text-muted); font-weight: 600; }
+    
+    input, select { 
+        width: 100%; 
+        padding: 12px 14px; 
+        border-radius: 10px; 
+        border: 1px solid var(--border-color); 
+        background: var(--input-bg); 
+        color: var(--text); 
+        font-size: 1rem; 
+        outline: none;
+    }
+    input::placeholder { color: var(--text-muted); opacity: 0.7; }
+    input:focus, select:focus { border-color: var(--accent-blue); }
+
+    .btn { 
+        width: 100%; 
+        min-height: 48px; 
+        padding: 12px; 
+        border: none; 
+        border-radius: 10px; 
+        font-weight: 800; 
+        cursor: pointer; 
+        background: var(--accent-blue); 
+        color: white; 
+        font-size: 1rem; 
+        display: flex; 
+        align-items: center; 
+        justify-content: center; 
+        gap: 8px;
+        text-decoration: none; 
+        transition: opacity 0.2s; 
+    }
+    .btn:active { opacity: 0.85; }
+    .btn-green { background: var(--accent-green); }
+    .btn-secondary { background: var(--input-bg); color: var(--text); border: 1px solid var(--border-color); }
+    .btn-danger { background: var(--accent-red); }
+    .btn-admin { background: var(--accent-purple); color: white; }
+    .btn-amber { background: var(--accent-amber); color: #000; }
+
+    .user-info-bar { 
+        display: flex; 
+        justify-content: space-between; 
+        align-items: center; 
+        background: var(--sub-bg); 
+        padding: 12px 14px; 
+        border-radius: 10px; 
+        border: 1px solid var(--border-color);
+    }
+    
+    .equipos-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 4px; }
+    .equipo-card-box { 
+        background: var(--sub-bg); 
+        border: 1px solid var(--border-color); 
+        border-radius: 10px; 
+        padding: 12px; 
+        display: flex; 
+        flex-direction: column; 
+        gap: 8px; 
+    }
+    .equipo-card-box h4 { font-size: 0.85rem; font-weight: 800; color: var(--cyan-title); }
+
+    .filtros-box {
+        background: var(--sub-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        padding: 12px;
+        margin-top: 10px;
+        margin-bottom: 14px;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+    }
+    .filtro-item {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+    }
+    .filtro-item.full-width {
+        grid-column: span 2;
+    }
+    .filtro-item label {
+        font-size: 0.75rem;
+        color: var(--text-muted);
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    .filtro-item input, .filtro-item select {
+        padding: 8px 10px;
+        font-size: 0.85rem;
+        border-radius: 8px;
+        background: var(--input-bg);
+    }
+    .btn-limpiar-filtros {
+        background: var(--input-bg);
+        color: var(--text);
+        border: 1px solid var(--border-color);
+        font-weight: 700;
+        font-size: 0.85rem;
+        border-radius: 8px;
+        padding: 8px 12px;
+        cursor: pointer;
+        transition: background 0.2s;
+        min-height: 38px;
+    }
+    .btn-limpiar-filtros:hover {
+        opacity: 0.8;
+    }
+
+    .tabla-stats { width: 100%; border-collapse: collapse; text-align: left; font-size: 0.85rem; margin-top: 6px; }
+    .tabla-stats th { padding: 10px 8px; color: var(--text-muted); border-bottom: 1px solid var(--border-color); font-weight: 600; }
+    .tabla-stats td { padding: 10px 8px; border-bottom: 1px solid var(--table-border); vertical-align: middle; }
+    .progress-container { display: flex; align-items: center; gap: 8px; }
+    .progress-bar-bg { flex-grow: 1; background: var(--progress-bg); height: 8px; border-radius: 4px; overflow: hidden; border: 1px solid var(--border-color); }
+    .progress-bar-fill { height: 100%; background: var(--accent-green); border-radius: 4px; }
+    .eficiencia-txt { min-width: 42px; text-align: right; font-weight: bold; font-size: 0.75rem; }
+
+    .mesas-grid { display: flex; flex-direction: column; gap: 12px; margin-top: 12px; }
+    .mesa-card-vivo { 
+        background: var(--sub-bg); 
+        border: 1px solid var(--border-color); 
+        border-radius: 12px; 
+        padding: 14px; 
+        display: flex; 
+        flex-direction: column; 
+        gap: 12px; 
+    }
+    
+    .marcador-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .equipo-score-box { 
+        background: var(--score-bg); 
+        border-radius: 10px; 
+        padding: 10px; 
+        border: 1px solid var(--border-color);
+    }
+    .equipo-score-box.team-a { border-color: rgba(56, 189, 248, 0.4); }
+    .equipo-score-box.team-b { border-color: rgba(239, 68, 68, 0.4); }
+    
+    .score-a { color: var(--cyan-title); font-size: 2rem; font-weight: 900; line-height: 1; margin-top: 6px; }
+    .score-b { color: var(--accent-red); font-size: 2rem; font-weight: 900; line-height: 1; margin-top: 6px; }
+
+    .progress-track { width: 100%; height: 8px; background: var(--progress-bg); border-radius: 6px; overflow: hidden; margin-top: 4px; border: 1px solid var(--border-color); }
+    .progress-fill { height: 100%; background: var(--accent-green); transition: width 0.3s ease; }
+
+    .hidden { display: none !important; }
+    .status-badge { padding: 4px 8px; border-radius: 6px; font-size: 0.75rem; font-weight: bold; }
+    .status-aprobado { background: #065f46; color: #34d399; }
+    .status-pendiente { background: #854d0e; color: #fef08a; }
+    
+    .cumple-banner {
+        background: linear-gradient(135deg, #1e1b4b, #312e81);
+        border: 1px solid #6366f1;
+        border-radius: 14px;
+        padding: 14px;
+        text-align: center;
+        color: #e0e7ff;
+        box-shadow: 0 4px 12px rgba(99, 102, 241, 0.2);
+        animation: pulse-glow 2s infinite;
+    }
+    @keyframes pulse-glow {
+        0% { border-color: #6366f1; }
+        50% { border-color: #a5b4fc; box-shadow: 0 4px 20px rgba(165, 180, 252, 0.4); }
+        100% { border-color: #6366f1; }
+    }
+    /* ======================================================
+       IDENTIDAD CONTEMPORÁNEA DEL LOBBY
+       ====================================================== */
+    :root {
+        --app-backdrop:
+            radial-gradient(circle at 8% 4%, rgba(37, 99, 235, 0.22), transparent 31%),
+            radial-gradient(circle at 94% 12%, rgba(16, 185, 129, 0.14), transparent 28%),
+            linear-gradient(180deg, #0b1120 0%, #0e1728 48%, #0b1120 100%);
+        --surface-elevated: rgba(21, 34, 56, 0.94);
+        --surface-soft: rgba(30, 45, 74, 0.76);
+        --surface-hover: rgba(38, 56, 89, 0.92);
+        --card-shadow: 0 18px 50px rgba(0, 0, 0, 0.22);
+        --soft-shadow: 0 10px 28px rgba(0, 0, 0, 0.16);
+        --focus-ring: rgba(56, 189, 248, 0.3);
+        --brand-gradient: linear-gradient(135deg, #38bdf8 0%, #2563eb 52%, #10b981 100%);
+        --primary-gradient: linear-gradient(135deg, #10b981 0%, #0ea5e9 100%);
+    }
+
+    html.light-mode {
+        --app-backdrop:
+            radial-gradient(circle at 8% 4%, rgba(37, 99, 235, 0.13), transparent 31%),
+            radial-gradient(circle at 94% 12%, rgba(16, 185, 129, 0.1), transparent 28%),
+            linear-gradient(180deg, #f7faff 0%, #eef5ff 52%, #f8fbff 100%);
+        --surface-elevated: rgba(255, 255, 255, 0.95);
+        --surface-soft: rgba(241, 245, 249, 0.9);
+        --surface-hover: #eef4fb;
+        --card-shadow: 0 18px 48px rgba(37, 99, 235, 0.11);
+        --soft-shadow: 0 9px 26px rgba(37, 99, 235, 0.09);
+        --focus-ring: rgba(37, 99, 235, 0.2);
+    }
+
+    body {
+        min-height: 100vh;
+        padding: max(14px, env(safe-area-inset-top)) 12px max(34px, env(safe-area-inset-bottom));
+        background: var(--app-backdrop);
+        background-attachment: fixed;
+    }
+
+    .container {
+        max-width: 600px;
+        gap: 14px;
+    }
+
+    header {
+        position: relative;
+        display: grid;
+        grid-template-columns: 86px minmax(0, 1fr);
+        grid-template-rows: auto auto;
+        align-items: center;
+        column-gap: 15px;
+        min-height: 122px;
+        padding: 18px;
+        overflow: hidden;
+        text-align: left;
+        background: var(--surface-elevated);
+        border: 1px solid var(--border-color);
+        border-radius: 24px;
+        box-shadow: var(--card-shadow);
+    }
+
+    header::after { content: none; }
+
+    header img {
+        grid-row: 1 / 3;
+        width: 86px !important;
+        height: 86px;
+        object-fit: contain;
+        filter: drop-shadow(0 8px 15px rgba(15, 23, 42, 0.2));
+    }
+
+    header h1 {
+        align-self: end;
+        padding-right: 88px;
+        color: var(--text);
+        font-size: clamp(1.4rem, 5vw, 1.8rem);
+        line-height: 1.06;
+        letter-spacing: -0.045em;
+    }
+
+    header p {
+        align-self: start;
+        margin-top: 5px;
+        color: var(--text-muted);
+        font-size: 0.82rem;
+        line-height: 1.35;
+    }
+
+    .lobby-theme-toggle {
+        position: absolute;
+        top: 14px;
+        right: 14px;
+        min-height: 38px;
+        padding: 7px 10px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        background: var(--surface-soft);
+        color: var(--text);
+        font-size: 0.75rem;
+        font-weight: 800;
+        cursor: pointer;
+        box-shadow: var(--soft-shadow);
+    }
+
+    .lobby-theme-toggle:focus-visible,
+    .btn:focus-visible,
+    input:focus-visible,
+    select:focus-visible,
+    .quick-link:focus-visible {
+        outline: 3px solid var(--focus-ring);
+        outline-offset: 2px;
+    }
+
+    .card,
+    .galardon-card,
+    .cumple-banner {
+        border-radius: 22px;
+        box-shadow: var(--soft-shadow);
+    }
+
+    .card {
+        padding: 18px;
+        background: var(--surface-elevated);
+        border-color: var(--border-color);
+    }
+
+    #auth-section,
+    #user-logged-section {
+        position: relative;
+        overflow: hidden;
+    }
+
+    #user-logged-section {
+        padding: 12px;
+    }
+
+    #user-logged-section::before,
+    #auth-section::before { content: none; }
+
+    .user-info-bar {
+        min-height: 66px;
+        padding: 12px 13px;
+        border-radius: 16px;
+        background: var(--surface-soft);
+        transition: transform 0.18s ease, background-color 0.18s ease;
+    }
+
+    .user-info-bar:hover {
+        background: var(--surface-hover);
+        transform: translateY(-1px);
+    }
+
+    .status-badge {
+        padding: 5px 9px;
+        border-radius: 999px;
+        letter-spacing: 0.02em;
+    }
+
+    #acciones-usuario {
+        margin-top: 9px !important;
+        gap: 8px !important;
+    }
+
+    #acciones-usuario .btn-green {
+        min-height: 56px;
+        border: 1px solid rgba(255, 255, 255, 0.22);
+        border-radius: 16px;
+        background: var(--primary-gradient);
+        box-shadow: 0 6px 14px rgba(14, 165, 233, 0.13);
+        font-size: 1rem;
+        letter-spacing: -0.01em;
+    }
+
+    .btn {
+        border-radius: 13px;
+        transition: transform 0.18s ease, filter 0.18s ease, box-shadow 0.18s ease;
+    }
+
+    .btn:hover {
+        transform: translateY(-1px);
+        filter: brightness(1.04);
+    }
+
+    .btn:active {
+        transform: translateY(0) scale(0.99);
+    }
+
+    .btn-secondary {
+        background: var(--surface-soft);
+    }
+
+    input,
+    select {
+        min-height: 46px;
+        border-radius: 13px;
+        background: var(--surface-soft);
+        transition: border-color 0.18s ease, box-shadow 0.18s ease;
+    }
+
+    input:focus,
+    select:focus {
+        border-color: var(--accent-blue);
+        box-shadow: 0 0 0 4px var(--focus-ring);
+    }
+
+    #user-dropdown-menu:not(.hidden) {
+        display: grid !important;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 7px !important;
+        margin-top: 8px !important;
+        padding: 8px !important;
+        border-radius: 15px !important;
+        background: var(--surface-soft) !important;
+    }
+
+    #user-dropdown-menu .btn {
+        min-width: 0;
+        min-height: 42px !important;
+        padding: 9px 10px;
+        border-radius: 11px;
+        font-size: 0.79rem !important;
+        line-height: 1.2;
+    }
+
+    #user-dropdown-menu .btn-danger {
+        grid-column: 1 / -1;
+    }
+
+    #user-dropdown-menu #admin-panel-btn,
+    #user-dropdown-menu .menu-coming-soon {
+        grid-column: 1 / -1;
+    }
+
+    #user-dropdown-menu #admin-panel-btn {
+        background: rgba(139, 92, 246, 0.1) !important;
+        color: #c4b5fd !important;
+        border: 1px solid rgba(167, 139, 250, 0.3) !important;
+        box-shadow: none;
+    }
+
+    #user-dropdown-menu .btn-danger {
+        background: rgba(239, 68, 68, 0.06) !important;
+        color: #fca5a5 !important;
+        border: 1px solid rgba(248, 113, 113, 0.25) !important;
+        box-shadow: none;
+    }
+
+    #user-dropdown-menu #admin-panel-btn:hover {
+        background: rgba(139, 92, 246, 0.16) !important;
+    }
+
+    #user-dropdown-menu .btn-danger:hover {
+        background: rgba(239, 68, 68, 0.11) !important;
+    }
+
+    html.light-mode #user-dropdown-menu #admin-panel-btn {
+        background: rgba(124, 58, 237, 0.07) !important;
+        color: #6d28d9 !important;
+        border-color: rgba(124, 58, 237, 0.22) !important;
+    }
+
+    html.light-mode #user-dropdown-menu .btn-danger {
+        background: rgba(220, 38, 38, 0.04) !important;
+        color: #b91c1c !important;
+        border-color: rgba(220, 38, 38, 0.18) !important;
+    }
+
+    .user-menu-section-label {
+        grid-column: 1 / -1;
+        padding: 3px 3px 0;
+        color: var(--text-muted);
+        font-size: 0.62rem;
+        font-weight: 900;
+        letter-spacing: 0.07em;
+        text-transform: uppercase;
+    }
+
+    #user-dropdown-menu .menu-coming-soon {
+        justify-content: space-between;
+        border-style: dashed;
+    }
+
+    .menu-coming-soon small {
+        padding: 3px 6px;
+        border-radius: 999px;
+        background: rgba(245, 158, 11, 0.13);
+        color: var(--accent-amber);
+        font-size: 0.58rem;
+        font-weight: 900;
+        text-transform: uppercase;
+    }
+
+    .lobby-quick-nav {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 7px;
+        margin-top: 7px;
+    }
+
+    .quick-link {
+        min-width: 0;
+        min-height: 70px;
+        padding: 9px 5px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 5px;
+        color: var(--text);
+        font: inherit;
+        text-decoration: none;
+        text-align: center;
+        background: var(--surface-soft);
+        border: 1px solid var(--border-color);
+        border-radius: 14px;
+        cursor: pointer;
+        transition: transform 0.18s ease, border-color 0.18s ease, background-color 0.18s ease;
+    }
+
+    .quick-link:hover {
+        transform: translateY(-2px);
+        border-color: rgba(56, 189, 248, 0.55);
+        background: var(--surface-hover);
+    }
+
+    .quick-link-icon {
+        font-size: 1.15rem;
+        line-height: 1;
+    }
+
+    .quick-link-label {
+        max-width: 100%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        color: var(--text-muted);
+        font-size: 0.68rem;
+        font-weight: 800;
+        white-space: nowrap;
+    }
+
+    .quick-link-meta {
+        max-width: 100%;
+        overflow: hidden;
+        color: var(--cyan-title);
+        font-size: 0.58rem;
+        font-weight: 800;
+        line-height: 1.1;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .quick-link.is-smart {
+        background:
+            radial-gradient(circle at 100% 0%, rgba(14, 165, 233, 0.11), transparent 42%),
+            var(--surface-soft);
+    }
+
+    .quick-link.is-upcoming {
+        border-style: dashed;
+    }
+
+    .quick-nav-editor {
+        margin-top: 8px;
+        padding: 11px;
+        border: 1px solid var(--border-color);
+        border-radius: 15px;
+        background: var(--surface-soft);
+    }
+
+    .quick-editor-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        margin-bottom: 4px;
+    }
+
+    .quick-editor-head strong {
+        color: var(--text);
+        font-size: 0.78rem;
+    }
+
+    .quick-editor-close {
+        width: 30px;
+        height: 30px;
+        display: grid;
+        place-items: center;
+        border: 1px solid var(--border-color);
+        border-radius: 9px;
+        background: var(--surface-elevated);
+        color: var(--text-muted);
+        font-weight: 900;
+        cursor: pointer;
+    }
+
+    .quick-nav-editor > p {
+        margin-bottom: 8px;
+        color: var(--text-muted);
+        font-size: 0.7rem;
+        line-height: 1.35;
+    }
+
+    .quick-options {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 6px;
+    }
+
+    .quick-option {
+        min-width: 0;
+        min-height: 42px;
+        padding: 7px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        border: 1px solid var(--border-color);
+        border-radius: 11px;
+        background: var(--surface-elevated);
+        color: var(--text-muted);
+        font-size: 0.68rem;
+        font-weight: 800;
+        cursor: pointer;
+    }
+
+    .quick-option > span:nth-child(2) {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .quick-option.is-selected {
+        border-color: rgba(16, 185, 129, 0.55);
+        background: rgba(16, 185, 129, 0.1);
+        color: var(--text);
+    }
+
+    .quick-option-check {
+        margin-left: auto;
+        color: var(--accent-green);
+        font-size: 0.68rem;
+    }
+
+    .quick-editor-footer {
+        min-height: 28px;
+        margin-top: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+    }
+
+    #quick-nav-message {
+        color: var(--accent-amber);
+        font-size: 0.64rem;
+        font-weight: 700;
+    }
+
+    .quick-reset-btn {
+        min-height: 28px;
+        padding: 5px 8px;
+        border: 0;
+        border-radius: 8px;
+        background: transparent;
+        color: var(--cyan-title);
+        font-size: 0.64rem;
+        font-weight: 800;
+        cursor: pointer;
+    }
+
+    .lobby-toast {
+        position: fixed;
+        left: 50%;
+        bottom: max(18px, env(safe-area-inset-bottom));
+        z-index: 1000;
+        width: min(calc(100% - 28px), 420px);
+        padding: 11px 14px;
+        transform: translateX(-50%);
+        border: 1px solid rgba(245, 158, 11, 0.4);
+        border-radius: 13px;
+        background: rgba(15, 23, 42, 0.94);
+        color: #fef3c7;
+        font-size: 0.78rem;
+        font-weight: 800;
+        text-align: center;
+        box-shadow: 0 16px 36px rgba(0, 0, 0, 0.28);
+        backdrop-filter: blur(12px);
+    }
+
+    html.light-mode .lobby-toast {
+        background: rgba(255, 251, 235, 0.97);
+        color: #92400e;
+    }
+
+    #crear-mesa-card {
+        padding: 16px;
+        overflow: hidden;
+        background:
+            radial-gradient(circle at 100% 0%, rgba(14, 165, 233, 0.11), transparent 34%),
+            var(--surface-elevated);
+    }
+
+    .crear-mesa-heading {
+        display: flex;
+        align-items: center;
+        gap: 11px;
+        margin-bottom: 14px;
+    }
+
+    .crear-mesa-icon {
+        width: 42px;
+        height: 42px;
+        display: grid;
+        flex: 0 0 42px;
+        place-items: center;
+        border-radius: 13px;
+        background: linear-gradient(135deg, rgba(16, 185, 129, 0.18), rgba(14, 165, 233, 0.2));
+        font-size: 1.25rem;
+    }
+
+    #crear-mesa-card h3 {
+        color: var(--text) !important;
+        font-size: 1.15rem !important;
+        letter-spacing: -0.025em;
+    }
+
+    .crear-mesa-heading p {
+        margin-top: 2px;
+        color: var(--text-muted);
+        font-size: 0.75rem;
+        line-height: 1.35;
+    }
+
+    .meta-partida-field {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 12px;
+        border: 1px solid var(--border-color);
+        border-radius: 14px;
+        background: var(--surface-soft);
+    }
+
+    .meta-partida-field label {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        color: var(--text);
+        font-size: 0.82rem;
+        font-weight: 800;
+    }
+
+    .meta-partida-field label span {
+        color: var(--text-muted);
+        font-size: 0.68rem;
+        font-weight: 600;
+    }
+
+    .meta-partida-input {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    .meta-partida-input input {
+        width: 86px;
+        min-height: 40px;
+        padding: 8px 9px;
+        text-align: center;
+        font-weight: 900;
+    }
+
+    .meta-partida-input span {
+        color: var(--text-muted);
+        font-size: 0.72rem;
+        font-weight: 700;
+    }
+
+    .equipos-fieldset {
+        min-width: 0;
+        padding: 0;
+        border: 0;
+    }
+
+    .equipos-fieldset legend {
+        margin-bottom: 8px;
+        color: var(--text);
+        font-size: 0.82rem;
+        font-weight: 900;
+    }
+
+    .equipos-grid {
+        position: relative;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+        margin-top: 0;
+    }
+
+    .equipo-card-box {
+        min-width: 0;
+        padding: 11px;
+        border-radius: 16px;
+        background: var(--surface-soft);
+    }
+
+    .equipo-card-box:first-child { border-color: rgba(14, 165, 233, 0.35); }
+    .equipo-card-box:last-child { border-color: rgba(244, 63, 94, 0.3); }
+
+    .equipo-card-box h4 {
+        width: fit-content;
+        margin-bottom: 2px;
+        padding: 4px 8px;
+        border-radius: 999px;
+        background: rgba(14, 165, 233, 0.12);
+        color: var(--cyan-title);
+        font-size: 0.72rem;
+    }
+
+    .equipo-card-box:last-child h4 {
+        background: rgba(244, 63, 94, 0.1);
+        color: var(--accent-red);
+    }
+
+    .equipo-card-box label {
+        display: block;
+        margin-bottom: 4px;
+        font-size: 0.7rem;
+    }
+
+    .equipo-card-box select {
+        min-width: 0;
+        min-height: 42px;
+        padding: 8px 7px;
+        font-size: 0.78rem;
+    }
+
+    .crear-mesa-submit {
+        min-height: 50px;
+        margin-top: 2px !important;
+        border-radius: 15px;
+        background: var(--primary-gradient);
+        box-shadow: 0 12px 24px rgba(14, 165, 233, 0.16);
+    }
+
+    #clasificatoria-section,
+    #mesas-section {
+        padding: 17px;
+    }
+
+    #clasificatoria-section > div:first-child,
+    #mesas-section > div:first-child {
+        min-height: 42px;
+        gap: 10px;
+    }
+
+    #clasificatoria-section h3,
+    #mesas-section h3 {
+        color: var(--text);
+        letter-spacing: -0.025em;
+    }
+
+    .clasificatoria-header,
+    .mesas-section-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+    }
+
+    .clasificatoria-title-wrap {
+        min-width: 0;
+    }
+
+    .clasificatoria-eyebrow {
+        display: block;
+        margin-bottom: 2px;
+        color: var(--cyan-title);
+        font-size: 0.64rem;
+        font-weight: 900;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+    }
+
+    #clasificatoria-section:not(.is-expanded),
+    #clasificatoria-section .clasificatoria-header,
+    #clasificatoria-section .clasificatoria-summary {
+        cursor: pointer;
+    }
+
+    #clasificatoria-section:focus-visible {
+        outline: 3px solid rgba(14, 165, 233, 0.38);
+        outline-offset: 3px;
+    }
+
+    .clasificatoria-pin-btn {
+        flex: 0 0 auto;
+        width: auto !important;
+        min-height: 34px !important;
+        padding: 6px 10px !important;
+        border: 1px solid rgba(239, 68, 68, 0.38) !important;
+        border-radius: 999px !important;
+        background: rgba(239, 68, 68, 0.11) !important;
+        color: var(--accent-red) !important;
+        font-size: 0.68rem;
+        font-weight: 900;
+    }
+
+    .clasificatoria-pin-btn[aria-pressed="true"] {
+        border-color: rgba(16, 185, 129, 0.42) !important;
+        background: rgba(16, 185, 129, 0.12) !important;
+        color: var(--accent-green) !important;
+    }
+
+    .clasificatoria-summary {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 8px;
+        margin-top: 12px;
+    }
+
+    .clasificatoria-summary-item {
+        min-width: 0;
+        padding: 10px 8px;
+        border: 1px solid var(--border-color);
+        border-radius: 13px;
+        background: var(--surface-soft);
+        text-align: center;
+    }
+
+    .clasificatoria-summary-label,
+    .clasificatoria-summary-value {
+        display: block;
+    }
+
+    .clasificatoria-summary-label {
+        color: var(--text-muted);
+        font-size: 0.64rem;
+        font-weight: 750;
+    }
+
+    .clasificatoria-summary-value {
+        margin-top: 3px;
+        overflow: hidden;
+        color: var(--text);
+        font-size: 0.8rem;
+        font-weight: 900;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    #clasificatoria-resumen-posicion {
+        color: var(--cyan-title);
+        font-size: 1rem;
+    }
+
+    .clasificatoria-content {
+        cursor: default;
+        margin-top: 12px;
+        padding-top: 12px;
+        border-top: 1px solid var(--border-color);
+    }
+
+    .clasificatoria-tools {
+        display: flex;
+        justify-content: flex-end;
+        gap: 6px;
+        margin-bottom: 8px;
+    }
+
+    .clasificatoria-tools .btn {
+        width: auto;
+        min-height: 36px;
+        padding: 6px 10px;
+        font-size: 0.78rem;
+    }
+
+    .clasificatoria-pdf-btn {
+        background: linear-gradient(135deg, #0f766e, #10b981) !important;
+        color: #ffffff !important;
+        border: 1px solid rgba(52, 211, 153, 0.36) !important;
+        box-shadow: 0 8px 18px rgba(16, 185, 129, 0.16);
+    }
+
+    .clasificatoria-pdf-btn:disabled {
+        opacity: .62;
+        cursor: wait;
+        transform: none !important;
+    }
+
+    .clasificatoria-table-wrap {
+        margin-top: 8px;
+        overflow-x: auto;
+    }
+
+    .filtros-box {
+        padding: 13px;
+        border-radius: 16px;
+        background: var(--surface-soft);
+    }
+
+    .tabla-stats {
+        margin-top: 8px;
+        border-collapse: separate;
+        border-spacing: 0 4px;
+        font-size: 0.82rem;
+    }
+
+    .tabla-stats th {
+        padding: 8px 7px;
+        border: 0;
+        color: var(--text-muted);
+        font-size: 0.7rem;
+        letter-spacing: 0.025em;
+        text-transform: uppercase;
+    }
+
+    .tabla-stats td {
+        padding: 10px 7px;
+        border-top: 1px solid var(--border-color);
+        border-bottom: 1px solid var(--border-color);
+        background: var(--surface-soft);
+    }
+
+    .tabla-stats td:first-child {
+        border-left: 1px solid var(--border-color);
+        border-radius: 11px 0 0 11px;
+    }
+
+    .tabla-stats td:last-child {
+        border-right: 1px solid var(--border-color);
+        border-radius: 0 11px 11px 0;
+    }
+
+    .progress-bar-bg,
+    .progress-track {
+        height: 7px;
+        border: 0;
+        background: var(--progress-bg);
+    }
+
+    .progress-bar-fill,
+    .progress-fill {
+        background: var(--primary-gradient);
+    }
+
+    .mesas-grid {
+        gap: 10px;
+        margin-top: 10px;
+    }
+
+    .mesa-card-vivo {
+        position: relative;
+        gap: 12px;
+        padding: 14px;
+        overflow: hidden;
+        border-radius: 19px;
+        background:
+            radial-gradient(circle at 100% 0%, rgba(37, 99, 235, 0.12), transparent 34%),
+            var(--surface-soft);
+        box-shadow: inset 0 1px rgba(255, 255, 255, 0.04);
+    }
+
+    .mesa-card-vivo::before { content: none; }
+
+    .mesa-live-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+    }
+
+    .mesa-live-title {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        min-width: 0;
+    }
+
+    .mesa-live-icon {
+        width: 36px;
+        height: 36px;
+        display: grid;
+        flex: 0 0 36px;
+        place-items: center;
+        border-radius: 11px;
+        background: linear-gradient(135deg, rgba(56, 189, 248, 0.19), rgba(16, 185, 129, 0.16));
+    }
+
+    .mesa-live-title strong {
+        display: block;
+        color: var(--text);
+        font-size: 0.92rem;
+    }
+
+    .mesa-live-title > div > span {
+        display: block;
+        margin-top: 2px;
+        color: var(--text-muted);
+        font-size: 0.7rem;
+    }
+
+    .rondas-pill {
+        min-width: 58px;
+        padding: 6px 9px;
+        text-align: center;
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        background: var(--surface-elevated);
+    }
+
+    .rondas-pill span {
+        display: block;
+        color: var(--text-muted);
+        font-size: 0.62rem;
+        font-weight: 700;
+        text-transform: uppercase;
+    }
+
+    .rondas-pill strong {
+        color: var(--text);
+        font-size: 1rem;
+    }
+
+    .marcador-grid {
+        gap: 8px;
+    }
+
+    .equipo-score-box {
+        min-width: 0;
+        padding: 11px;
+        border-radius: 15px;
+        background: var(--surface-elevated);
+    }
+
+    .equipo-score-box.team-a {
+        border-color: rgba(14, 165, 233, 0.42);
+    }
+
+    .equipo-score-box.team-b {
+        border-color: rgba(244, 63, 94, 0.38);
+    }
+
+    .score-a,
+    .score-b {
+        font-size: 2rem;
+        letter-spacing: -0.05em;
+    }
+
+    .equipo-score-label {
+        font-size: 0.68rem;
+        font-weight: 900;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+    }
+
+    .equipo-score-names {
+        min-height: 32px;
+        margin-top: 4px;
+        color: var(--text);
+        font-size: 0.78rem;
+        font-weight: 800;
+        line-height: 1.25;
+        overflow-wrap: anywhere;
+    }
+
+    .mesa-progress-label {
+        display: flex;
+        justify-content: space-between;
+        color: var(--text-muted);
+        font-size: 0.7rem;
+        font-weight: 700;
+    }
+
+    .mesa-enter-btn {
+        min-height: 44px !important;
+        justify-content: space-between;
+        padding-inline: 16px;
+        border-radius: 14px;
+        background: linear-gradient(135deg, #2563eb, #0ea5e9);
+        font-size: 0.86rem !important;
+        box-shadow: 0 10px 20px rgba(37, 99, 235, 0.18);
+    }
+
+    .mesa-enter-arrow {
+        width: 26px;
+        height: 26px;
+        display: grid;
+        place-items: center;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.16);
+    }
+
+    .galardon-card {
+        border-color: rgba(245, 158, 11, 0.5);
+        background:
+            radial-gradient(circle at 95% 10%, rgba(245, 158, 11, 0.18), transparent 35%),
+            var(--surface-elevated);
+    }
+
+    .on-fire-content {
+        border-radius: 14px;
+        background: var(--surface-soft);
+    }
+
+    .cumple-banner {
+        background:
+            radial-gradient(circle at 90% 10%, rgba(168, 85, 247, 0.28), transparent 40%),
+            linear-gradient(135deg, #1e1b4b, #312e81);
+    }
+
+    @media (max-width: 470px) {
+        body {
+            padding-inline: 9px;
+        }
+
+        .container {
+            gap: 11px;
+        }
+
+        header {
+            grid-template-columns: 72px minmax(0, 1fr);
+            min-height: 108px;
+            column-gap: 11px;
+            padding: 14px;
+            border-radius: 20px;
+        }
+
+        header img {
+            width: 72px !important;
+            height: 72px;
+        }
+
+        header h1 {
+            padding-right: 78px;
+            font-size: 1.35rem;
+        }
+
+        header p {
+            font-size: 0.72rem;
+        }
+
+        .lobby-theme-toggle {
+            top: 11px;
+            right: 11px;
+            width: auto;
+            min-width: 72px;
+            min-height: 36px;
+            padding: 6px 9px;
+        }
+
+        .lobby-theme-label {
+            display: inline;
+        }
+
+        .card,
+        #clasificatoria-section,
+        #mesas-section {
+            padding: 14px;
+            border-radius: 19px;
+        }
+
+        #user-logged-section {
+            padding: 10px;
+        }
+
+        #acciones-usuario .btn-green {
+            box-shadow: 0 3px 8px rgba(14, 165, 233, 0.1);
+        }
+
+        .user-info-bar {
+            padding: 11px;
+        }
+
+        .lobby-quick-nav {
+            gap: 6px;
+        }
+
+        .quick-link {
+            min-height: 64px;
+            padding-inline: 3px;
+        }
+
+        .quick-link-label {
+            font-size: 0.62rem;
+        }
+
+        .quick-options {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .tabla-stats {
+            font-size: 0.76rem;
+        }
+
+        .tabla-stats th,
+        .tabla-stats td {
+            padding-inline: 5px;
+        }
+
+        .equipos-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 7px;
+        }
+
+        #crear-mesa-card {
+            padding: 13px;
+        }
+
+        .equipo-card-box {
+            padding: 9px 8px;
+        }
+
+        .equipo-card-box select {
+            padding-inline: 6px;
+            font-size: 0.72rem;
+        }
+
+        .clasificatoria-pin-btn {
+            white-space: nowrap;
+        }
+
+        .clasificatoria-tools {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .clasificatoria-tools .btn {
+            width: 100%;
+        }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+            scroll-behavior: auto !important;
+            animation-duration: 0.01ms !important;
+            animation-iteration-count: 1 !important;
+            transition-duration: 0.01ms !important;
+        }
+    }
+    </style>
+</head>
+
+<body>
+<div class="container"><header>
+        <img src="logo.png" alt="Logo" width="150">
+        <h1>Club Dominó y Romo</h1>
+        <p>Sistema de Anote y Estadísticas</p>
+        <button id="lobby-theme-toggle" class="lobby-theme-toggle" type="button" onclick="cambiarTemaLobby()">
+            <span class="lobby-theme-icon" aria-hidden="true">🌙</span>
+            <span class="lobby-theme-label">Oscuro</span>
+        </button>
+    </header><!-- BANNER DE CUMPLEAÑOS DINÁMICO -->
+    <div id="cumpleanos-banner" class="cumple-banner hidden">
+        <div style="font-size: 1.3rem; font-weight: 900; color: #fde047; margin-bottom: 4px;">🎉 ¡Feliz Cumpleaños! 🎂</div>
+        <p id="cumpleanos-texto" style="font-size: 0.9rem; font-weight: 600;"></p>
+    </div>
+
+    <!-- SECCIÓN DE GALARDONES: JUGADOR ON FIRE -->
+    <div id="galardon-section" class="galardon-card hidden">
+        <div class="galardon-header">
+            <span style="font-size: 1.2rem;">🔥</span>
+            <h3>Galardón Semanal: Jugador On Fire</h3>
+        </div>
+        <div id="on-fire-container">
+            <div style="text-align: center; color: var(--text-muted); font-size: 0.85rem; padding: 6px 0;">Calculando al más encendido...</div>
+        </div>
+    </div>
+
+    <!-- SECCIÓN DE USUARIO LOGUEADO -->
+    <div id="user-logged-section" class="card hidden">
+        <div class="user-info-bar" style="cursor: pointer;" onclick="toggleMenuUsuario()">
+            <div>
+                <span style="font-size: 0.95rem; font-weight: bold;" id="user-name-display">👤 Hola, Carga...</span>
+                <div id="user-role-display" style="font-size: 0.75rem; color: var(--text-muted);"></div>
+            </div>
+            <div style="display: flex; gap: 8px; align-items: center;">
+                <span id="user-status-badge" class="status-badge">...</span>
+                <span style="font-size: 0.9rem; color: var(--cyan-title); transition: transform 0.2s;" id="menu-arrow">▼</span>
+            </div>
+        </div>
+
+        <div id="user-dropdown-menu" class="hidden" style="background: var(--sub-bg); border: 1px solid var(--border-color); border-radius: 10px; padding: 8px; margin-top: 10px; display: flex; flex-direction: column; gap: 6px;">
+            <div class="user-menu-section-label">Explorar</div>
+            <button class="btn btn-secondary" style="justify-content: flex-start; min-height: 40px; font-size: 0.85rem;" onclick="window.location.href='consultas.html'">🔎 Consultas</button>
+            <button class="btn btn-secondary" style="justify-content: flex-start; min-height: 40px; font-size: 0.85rem;" onclick="window.location.href='galardones.html'">🏆 Galardones</button>
+            <button class="btn btn-secondary" style="justify-content: flex-start; min-height: 40px; font-size: 0.85rem;" onclick="window.location.href='torneos.html'">🎯 Torneos</button>
+            <button class="btn btn-secondary" style="justify-content: flex-start; min-height: 40px; font-size: 0.85rem;" onclick="window.location.href='historial.html'">📋 Historial</button>
+            <button class="btn btn-secondary" type="button" onclick="window.location.href='tombola.html'">🎲 Jugada aleatoria</button>
+            <div class="user-menu-section-label">Cuenta</div>
+            <button class="btn btn-secondary" style="justify-content: flex-start; min-height: 40px; font-size: 0.85rem;" onclick="window.location.href='perfil.html'">👤 Mi Perfil</button>
+            <button id="btn-notificaciones-app" class="btn btn-secondary" type="button" aria-pressed="false" style="justify-content: flex-start; min-height: 40px; font-size: 0.85rem;" onclick="window.AppNotifications?.alternar()">🔕 Avisos desactivados · Toca para activar</button>
+            <button class="btn btn-secondary" style="justify-content: flex-start; min-height: 40px; font-size: 0.85rem;" onclick="abrirPersonalizadorDesdeMenu()">🎛️ Personalizar accesos</button>
+            <button id="admin-panel-btn" class="btn btn-admin hidden" style="justify-content: flex-start; min-height: 40px; font-size: 0.85rem;" onclick="window.location.href='admin.html'">⚙️ Panel de Administración</button>
+            <button class="btn btn-danger" style="justify-content: flex-start; min-height: 40px; font-size: 0.85rem;" onclick="cerrarSesion()">🚪 Cerrar Sesión</button>
+        </div>
+
+        <div id="pending-alert" class="hidden" style="background: #422006; border: 1px solid #713f12; color: #fef08a; padding: 10px; border-radius: 8px; font-size: 0.85rem; margin-top: 12px;">
+            Tu cuenta está <strong>Pendiente de Aprobación</strong>. Un administrador debe autorizarte para abrir mesas.
+        </div>
+
+        <div id="acciones-usuario" class="hidden" style="display: flex; flex-direction: column; gap: 10px; margin-top: 12px;">
+            <button class="btn btn-green" onclick="toggleCrearMesa()">➕ Crear / Configurar Mesa</button>
+        </div>
+
+        <nav id="lobby-quick-nav" class="lobby-quick-nav" aria-label="Accesos rápidos"></nav>
+        <div id="quick-nav-editor" class="quick-nav-editor hidden">
+            <div class="quick-editor-head">
+                <strong>Personalizar accesos</strong>
+                <button class="quick-editor-close" type="button" aria-label="Cerrar personalización" onclick="cerrarPersonalizadorAccesos()">×</button>
+            </div>
+            <p>Elige entre uno y cuatro botones. La selección se guarda en este dispositivo.</p>
+            <div id="lobby-quick-options" class="quick-options"></div>
+            <div class="quick-editor-footer">
+                <span id="quick-nav-message" role="status" aria-live="polite"></span>
+                <button class="quick-reset-btn" type="button" onclick="restablecerAccesosRapidos()">Restablecer</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- CREAR MESA ONLINE -->
+    <div id="crear-mesa-card" class="card hidden">
+        <div class="crear-mesa-heading">
+            <span class="crear-mesa-icon" aria-hidden="true">🪑</span>
+            <div>
+                <h3>Iniciar Nueva Mesa</h3>
+                <p>Define la meta y organiza las dos parejas.</p>
+            </div>
+        </div>
+        <form onsubmit="crearNuevaMesa(event)">
+            <div class="meta-partida-field">
+                <label for="limite-puntos-mesa">Meta de la partida <span>Puntos para ganar</span></label>
+                <div class="meta-partida-input">
+                    <input type="number" id="limite-puntos-mesa" value="200" min="50" step="50">
+                    <span>pts</span>
+                </div>
+            </div>
+             
+            <fieldset class="equipos-fieldset">
+                <legend>Equipos</legend>
+                <div class="equipos-grid">
+                    <div class="equipo-card-box">
+                        <h4>Equipo A</h4>
+                        <div>
+                            <label>Jugador 1</label>
+                            <select id="select-j1" required></select>
+                        </div>
+                        <div>
+                            <label>Jugador 3</label>
+                            <select id="select-j3" required></select>
+                        </div>
+                    </div>
+
+                    <div class="equipo-card-box">
+                        <h4>Equipo B</h4>
+                        <div>
+                            <label>Jugador 2</label>
+                            <select id="select-j2" required></select>
+                        </div>
+                        <div>
+                            <label>Jugador 4</label>
+                            <select id="select-j4" required></select>
+                        </div>
+                    </div>
+                </div>
+            </fieldset>
+
+            <button type="submit" class="btn btn-green crear-mesa-submit">Abrir Mesa de Anote <span aria-hidden="true">→</span></button>
+        </form>
+    </div>
+
+    <!-- CLASIFICATORIA GENERAL -->
+    <div id="clasificatoria-section" class="card hidden" role="region" tabindex="0" aria-expanded="false" onclick="manejarClickClasificatoria(event)" onkeydown="manejarTecladoClasificatoria(event)">
+        <div class="clasificatoria-header">
+            <div class="clasificatoria-title-wrap">
+                <h3 style="font-size: 1.1rem; font-weight: 800;">🏆 Clasificatoria General</h3>
+            </div>
+            <button id="clasificatoria-pin-btn" class="btn clasificatoria-pin-btn" type="button" aria-pressed="false" onclick="alternarClasificatoriaFija(event)">📌 Fijar</button>
+        </div>
+
+        <div class="clasificatoria-summary" aria-label="Resumen de la clasificatoria">
+            <div class="clasificatoria-summary-item">
+                <span class="clasificatoria-summary-label">Tu posición</span>
+                <strong id="clasificatoria-resumen-posicion" class="clasificatoria-summary-value">—</strong>
+            </div>
+            <div class="clasificatoria-summary-item">
+                <span class="clasificatoria-summary-label">Líder</span>
+                <strong id="clasificatoria-resumen-lider" class="clasificatoria-summary-value">Cargando…</strong>
+            </div>
+            <div class="clasificatoria-summary-item">
+                <span class="clasificatoria-summary-label">Jugadores</span>
+                <strong id="clasificatoria-resumen-total" class="clasificatoria-summary-value">—</strong>
+            </div>
+        </div>
+
+        <div id="clasificatoria-content" class="clasificatoria-content hidden">
+            <div class="clasificatoria-tools">
+                <button id="btn-descargar-clasificatoria-pdf" class="btn clasificatoria-pdf-btn" type="button" onclick="descargarClasificatoriaPDF(event)">📄 Descargar PDF</button>
+                <button class="btn btn-secondary" type="button" onclick="toggleFiltrosDesplegables()">⚙️ Filtros</button>
+                <a href="historial.html" class="btn btn-secondary" style="text-decoration: none;">📋 Historial</a>
+            </div>
+
+            <div id="filtros-box-container" class="filtros-box hidden">
+                <!-- CONSULTA / BUSCADOR POR NOMBRE DE JUGADOR -->
+                <div class="filtro-item full-width">
+                    <label>🔍 Buscar Jugador</label>
+                    <input type="text" id="filtro-buscar-jugador" placeholder="Escribe el nombre o alias..." oninput="aplicarFiltrosClasificatoria()">
+                </div>
+                <div class="filtro-item">
+                    <label>Tipo de Jugadores</label>
+                    <select id="filtro-tipo-jugador" onchange="aplicarFiltrosClasificatoria()">
+                        <option value="miembros" selected>Miembros Oficiales</option>
+                        <option value="invitados">Invitados</option>
+                        <option value="todos">Todos (Miembros e Invitados)</option>
+                    </select>
+                </div>
+                <div class="filtro-item">
+                    <label>Período rápido</label>
+                    <select id="filtro-periodo" onchange="cambiarPeriodoRapido(this.value)">
+                        <option value="semana_actual">Semana Actual (Jue-Mié)</option>
+                        <option value="todo">Histórico Completo</option>
+                        <option value="personalizado" selected>Personalizado</option>
+                    </select>
+                </div>
+                <div class="filtro-item">
+                    <label>Desde</label>
+                    <input type="date" id="filtro-desde" onchange="aplicarFiltrosClasificatoria()">
+                </div>
+                <div class="filtro-item">
+                    <label>Hasta</label>
+                    <input type="date" id="filtro-hasta" onchange="aplicarFiltrosClasificatoria()">
+                </div>
+                <div class="filtro-item full-width">
+                    <label>Mín. partidas</label>
+                    <input type="number" id="filtro-min-partidas" placeholder="Sin mínimo" min="0" oninput="aplicarFiltrosClasificatoria()">
+                </div>
+                <div class="filtro-item full-width">
+                    <button type="button" class="btn-limpiar-filtros" onclick="limpiarFiltrosClasificatoria()">🧹 Limpiar filtros</button>
+                </div>
+            </div>
+
+            <div class="clasificatoria-table-wrap">
+                <table class="tabla-stats">
+                    <thead>
+                        <tr>
+                            <th style="width: 35px; text-align: center;">#</th>
+                            <th>Jugador</th>
+                            <th style="text-align: center;">Vic</th>
+                            <th style="text-align: center;">Der</th>
+                            <th style="text-align: center;">Total</th>
+                            <th>Eficiencia %</th>
+                        </tr>
+                    </thead>
+                    <tbody id="cuerpo-tabla-clasificatoria">
+                        <!-- Hidratación síncrona inmediata -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- MESAS EN VIVO -->
+    <div id="mesas-section" class="card hidden">
+        <div class="mesas-section-header">
+            <div>
+                <span class="clasificatoria-eyebrow">Contenido principal</span>
+                <h3 style="font-size: 1.2rem; font-weight: 800;">Mesas en Vivo</h3>
+            </div>
+            <button class="btn btn-secondary" style="padding: 6px 12px; min-height: 36px; font-size: 0.8rem; width: auto;" onclick="cargarMesasActivas()">🔄 Actualizar</button>
+        </div>
+        <div id="lista-mesas" class="mesas-grid">
+            <!-- Hidratación síncrona inmediata -->
+        </div>
+    </div>
+    </div>
+
+</div>
+<script>
+    function actualizarTemaLobby() {
+        const boton = document.getElementById('lobby-theme-toggle');
+        if (!boton) return;
+        const esClaro = document.documentElement.classList.contains('light-mode');
+        boton.querySelector('.lobby-theme-icon').textContent = esClaro ? '☀️' : '🌙';
+        boton.querySelector('.lobby-theme-label').textContent = esClaro ? 'Claro' : 'Oscuro';
+        boton.dataset.mode = esClaro ? 'light' : 'dark';
+        boton.setAttribute('aria-label', esClaro ? 'Cambiar a modo oscuro' : 'Cambiar a modo claro');
+    }
+
+    function cambiarTemaLobby() {
+        document.documentElement.classList.toggle('light-mode');
+        localStorage.setItem('theme', document.documentElement.classList.contains('light-mode') ? 'light' : 'dark');
+        actualizarTemaLobby();
+    }
+
+    const CLASIFICATORIA_FIXED_KEY = 'lobby_clasificatoria_fija_v1';
+
+    function estaClasificatoriaFija() {
+        return localStorage.getItem(CLASIFICATORIA_FIXED_KEY) === 'true';
+    }
+
+    function actualizarVistaClasificatoria(estaAbierta, estaFija = estaClasificatoriaFija()) {
+        const seccion = document.getElementById('clasificatoria-section');
+        const contenido = document.getElementById('clasificatoria-content');
+        const resumen = seccion?.querySelector('.clasificatoria-summary');
+        const botonFijar = document.getElementById('clasificatoria-pin-btn');
+        if (!seccion || !contenido || !botonFijar) return;
+
+        contenido.classList.toggle('hidden', !estaAbierta);
+        resumen?.classList.toggle('hidden', estaAbierta);
+        seccion.classList.toggle('is-expanded', estaAbierta);
+        seccion.setAttribute('aria-expanded', String(estaAbierta));
+        botonFijar.setAttribute('aria-pressed', String(estaFija));
+        botonFijar.textContent = '📌 Fijar';
+        botonFijar.setAttribute('aria-label', estaFija ? 'Dejar de fijar la clasificación' : 'Fijar la clasificación abierta');
+    }
+
+    function inicializarClasificatoriaCompacta() {
+        const estaFija = estaClasificatoriaFija();
+        actualizarVistaClasificatoria(estaFija, estaFija);
+    }
+
+    function alternarClasificatoria() {
+        const seccion = document.getElementById('clasificatoria-section');
+        const estaAbierta = seccion?.getAttribute('aria-expanded') === 'true';
+        if (estaAbierta && estaClasificatoriaFija()) return;
+        actualizarVistaClasificatoria(!estaAbierta);
+    }
+
+    function manejarClickClasificatoria(evento) {
+        if (evento.target.closest('#clasificatoria-content, button, a, input, select, label')) return;
+        alternarClasificatoria();
+    }
+
+    function manejarTecladoClasificatoria(evento) {
+        if (evento.target !== evento.currentTarget || !['Enter', ' '].includes(evento.key)) return;
+        evento.preventDefault();
+        alternarClasificatoria();
+    }
+
+    function alternarClasificatoriaFija(evento) {
+        evento?.stopPropagation();
+        const debeFijarse = !estaClasificatoriaFija();
+        localStorage.setItem(CLASIFICATORIA_FIXED_KEY, String(debeFijarse));
+        const estaAbierta = document.getElementById('clasificatoria-section')?.getAttribute('aria-expanded') === 'true';
+        actualizarVistaClasificatoria(debeFijarse || estaAbierta, debeFijarse);
+    }
+
+    function abrirClasificatoriaDesdeAcceso() {
+        actualizarVistaClasificatoria(true);
+    }
+
+    const LOBBY_QUICK_STORAGE_KEY = 'lobby_accesos_rapidos_v1';
+    const LOBBY_QUICK_STATE_KEY = 'lobby_accesos_estado_v1';
+    const LOBBY_QUICK_DEFAULTS = ['mi_mesa', 'torneos', 'ranking', 'racha'];
+    let lobbyMesaJugador = null;
+    let lobbyTotalMesasActivas = 0;
+    let lobbyTorneoActivo = null;
+    let lobbyRachaActual = 0;
+    let lobbyRankingActual = null;
+    const LOBBY_QUICK_ACCESS = Object.freeze({
+        perfil: { icon: '👤', label: 'Perfil', href: 'perfil.html' },
+        consultas: { icon: '🔎', label: 'Consultas', href: 'consultas.html' },
+        galardones: { icon: '🏆', label: 'Galardones', href: 'galardones.html' },
+        torneos: { icon: '🎯', label: 'Torneos', href: 'torneos.html' },
+        historial: { icon: '📋', label: 'Historial', href: 'historial.html' },
+        admin: { icon: '⚙️', label: 'Administración', href: 'admin.html' },
+        mi_mesa: { icon: '🪑', label: 'Mesas en vivo', href: '#mesas-section' },
+        ranking: { icon: '📈', label: 'Mi ranking', href: '#clasificatoria-section' },
+        racha: { icon: '🔥', label: 'Mi racha', href: 'perfil.html' },
+        aleatoria: { icon: '🎲', label: 'Jugada aleatoria', href: 'tombola.html', meta: 'Sortear jugadores', smart: true }
+    });
+
+    function hidratarEstadoAccesosRapidos() {
+        try {
+            const estado = JSON.parse(localStorage.getItem(LOBBY_QUICK_STATE_KEY) || 'null');
+            if (!estado || typeof estado !== 'object') return;
+
+            lobbyMesaJugador = estado.mesaJugador?.id ? { id: estado.mesaJugador.id } : null;
+            lobbyTotalMesasActivas = Math.max(0, Number(estado.totalMesasActivas) || 0);
+            lobbyTorneoActivo = estado.torneoActivo?.id ? estado.torneoActivo : null;
+            lobbyRachaActual = Math.max(0, Number(estado.rachaActual) || 0);
+            lobbyRankingActual = Number(estado.rankingActual) > 0 ? Number(estado.rankingActual) : null;
+        } catch (error) {
+            console.warn('No se pudo restaurar el estado de los accesos rápidos.', error);
+        }
+    }
+
+    function guardarEstadoAccesosRapidos() {
+        try {
+            const estadoSerializado = JSON.stringify({
+                mesaJugador: lobbyMesaJugador?.id ? { id: lobbyMesaJugador.id } : null,
+                totalMesasActivas: lobbyTotalMesasActivas,
+                torneoActivo: lobbyTorneoActivo?.id ? {
+                    id: lobbyTorneoActivo.id,
+                    estado: lobbyTorneoActivo.estado || '',
+                    nombre: lobbyTorneoActivo.nombre || ''
+                } : null,
+                rachaActual: lobbyRachaActual,
+                rankingActual: lobbyRankingActual
+            });
+            if (localStorage.getItem(LOBBY_QUICK_STATE_KEY) !== estadoSerializado) {
+                localStorage.setItem(LOBBY_QUICK_STATE_KEY, estadoSerializado);
+            }
+        } catch (error) {
+            console.warn('No se pudo guardar el estado de los accesos rápidos.', error);
+        }
+    }
+
+    function resolverAccesoRapidoLobby(clave) {
+        const base = LOBBY_QUICK_ACCESS[clave];
+        if (!base) return null;
+
+        if (clave === 'mi_mesa') {
+            if (lobbyMesaJugador?.id) {
+                return { ...base, label: 'Mi mesa', href: `mesa.html?id=${encodeURIComponent(lobbyMesaJugador.id)}`, meta: 'Entrar ahora', smart: true };
+            }
+            const meta = lobbyTotalMesasActivas > 0
+                ? `${lobbyTotalMesasActivas} ${lobbyTotalMesasActivas === 1 ? 'mesa activa' : 'mesas activas'}`
+                : 'Sin mesas activas';
+            return { ...base, meta, smart: true };
+        }
+
+        if (clave === 'torneos') {
+            if (lobbyTorneoActivo?.id) {
+                const estado = {
+                    borrador: 'Borrador',
+                    inscripciones: 'Inscripciones',
+                    cerrado: 'Por comenzar',
+                    en_curso: 'En curso'
+                }[lobbyTorneoActivo.estado] || 'Activo';
+                return {
+                    ...base,
+                    label: lobbyTorneoActivo.estado === 'en_curso' ? 'Torneo en curso' : 'Torneo abierto',
+                    href: `torneos.html?torneo=${encodeURIComponent(lobbyTorneoActivo.id)}`,
+                    meta: estado,
+                    smart: true
+                };
+            }
+            return { ...base, meta: 'Sin torneos activos', smart: true };
+        }
+
+        if (clave === 'ranking') {
+            return {
+                ...base,
+                meta: lobbyRankingActual ? `Posición #${lobbyRankingActual}` : 'Sin posición',
+                smart: true
+            };
+        }
+
+        if (clave === 'racha') {
+            return {
+                ...base,
+                meta: lobbyRachaActual > 0
+                    ? `${lobbyRachaActual} ${lobbyRachaActual === 1 ? 'victoria' : 'victorias'}`
+                    : 'Sin racha activa',
+                smart: true
+            };
+        }
+
+        return base;
+    }
+
+    function obtenerAccesosRapidos() {
+        try {
+            const guardados = JSON.parse(localStorage.getItem(LOBBY_QUICK_STORAGE_KEY) || 'null');
+            if (Array.isArray(guardados)) {
+                const validos = [...new Set(guardados)].filter((clave) => LOBBY_QUICK_ACCESS[clave]).slice(0, 4);
+                if (validos.length) return validos;
+            }
+        } catch (error) {
+            console.warn('No se pudieron leer los accesos rápidos guardados.', error);
+        }
+        return [...LOBBY_QUICK_DEFAULTS];
+    }
+
+    function accesoDisponibleLobby(clave) {
+        if (clave !== 'admin') return true;
+        const adminButton = document.getElementById('admin-panel-btn');
+        if (adminButton && !adminButton.classList.contains('hidden')) return true;
+
+        try {
+            const perfilCache = JSON.parse(localStorage.getItem('cache_perfil') || 'null');
+            const rol = (perfilCache?.rol || '').toString().trim().toUpperCase();
+            return ['ADMIN', 'ADMINISTRADOR', 'SUPERUSER', 'SUPERUSUARIO', 'SUPER_ADMIN', 'SUPERADMIN'].includes(rol);
+        } catch (error) {
+            return false;
+        }
+    }
+
+    function pintarAccesosRapidos() {
+        const nav = document.getElementById('lobby-quick-nav');
+        const options = document.getElementById('lobby-quick-options');
+        if (!nav || !options) return;
+
+        const seleccionados = obtenerAccesosRapidos();
+        const visibles = seleccionados.filter(accesoDisponibleLobby);
+        const htmlAccesos = visibles.map((clave) => {
+            const acceso = resolverAccesoRapidoLobby(clave);
+            if (!acceso) return '';
+            const contenido = `<span class="quick-link-icon" aria-hidden="true">${acceso.icon}</span><span class="quick-link-label">${acceso.label}</span>${acceso.meta ? `<span class="quick-link-meta">${acceso.meta}</span>` : ''}`;
+            const accionRanking = clave === 'ranking' ? ' onclick="abrirClasificatoriaDesdeAcceso()"' : '';
+            return `<a class="quick-link${acceso.smart ? ' is-smart' : ''}" href="${acceso.href}"${accionRanking}>${contenido}</a>`;
+        }).join('');
+
+        const htmlOpciones = Object.entries(LOBBY_QUICK_ACCESS)
+            .filter(([clave]) => accesoDisponibleLobby(clave))
+            .map(([clave]) => {
+                const acceso = resolverAccesoRapidoLobby(clave);
+                const seleccionado = seleccionados.includes(clave);
+                return `<button class="quick-option${seleccionado ? ' is-selected' : ''}" type="button" aria-pressed="${seleccionado}" onclick="alternarAccesoRapido('${clave}')"><span aria-hidden="true">${acceso.icon}</span><span>${acceso.label}</span><span class="quick-option-check" aria-hidden="true">${seleccionado ? '✓' : '+'}</span></button>`;
+            }).join('');
+
+        // No sustituir nodos idénticos: evita el parpadeo de Mesas en vivo,
+        // Mi ranking y los demás accesos durante una sincronización silenciosa.
+        if (nav.dataset.renderFirma !== htmlAccesos) {
+            nav.innerHTML = htmlAccesos;
+            nav.dataset.renderFirma = htmlAccesos;
+        }
+        if (options.dataset.renderFirma !== htmlOpciones) {
+            options.innerHTML = htmlOpciones;
+            options.dataset.renderFirma = htmlOpciones;
+        }
+    }
+
+    function abrirPersonalizadorDesdeMenu() {
+        const menu = document.getElementById('user-dropdown-menu');
+        if (menu && !menu.classList.contains('hidden')) toggleMenuUsuario();
+        const editor = document.getElementById('quick-nav-editor');
+        if (!editor) return;
+        editor.classList.remove('hidden');
+        pintarAccesosRapidos();
+        window.requestAnimationFrame(() => editor.scrollIntoView({ behavior: 'smooth', block: 'nearest' }));
+    }
+
+    function cerrarPersonalizadorAccesos() {
+        document.getElementById('quick-nav-editor')?.classList.add('hidden');
+    }
+
+    function mostrarMensajeAccesos(mensaje) {
+        const output = document.getElementById('quick-nav-message');
+        if (!output) return;
+        output.textContent = mensaje;
+        window.clearTimeout(mostrarMensajeAccesos.timeoutId);
+        mostrarMensajeAccesos.timeoutId = window.setTimeout(() => { output.textContent = ''; }, 2600);
+    }
+
+    function alternarAccesoRapido(clave) {
+        const seleccionados = obtenerAccesosRapidos();
+        const posicion = seleccionados.indexOf(clave);
+        if (posicion >= 0) {
+            if (seleccionados.length === 1) {
+                mostrarMensajeAccesos('Debes conservar al menos un acceso.');
+                return;
+            }
+            seleccionados.splice(posicion, 1);
+        } else {
+            if (seleccionados.length >= 4) {
+                mostrarMensajeAccesos('Ya elegiste el máximo de cuatro.');
+                return;
+            }
+            seleccionados.push(clave);
+        }
+        localStorage.setItem(LOBBY_QUICK_STORAGE_KEY, JSON.stringify(seleccionados));
+        pintarAccesosRapidos();
+        mostrarMensajeAccesos('Botonera actualizada.');
+    }
+
+    function restablecerAccesosRapidos() {
+        localStorage.removeItem(LOBBY_QUICK_STORAGE_KEY);
+        pintarAccesosRapidos();
+        mostrarMensajeAccesos('Accesos restablecidos.');
+    }
+
+    function actualizarEstadoMesaJugadorLobby(mesas) {
+        const lista = Array.isArray(mesas) ? mesas : [];
+        lobbyTotalMesasActivas = lista.length;
+        const perfilId = perfilUsuario?.id;
+        // Mientras termina la validación local del perfil conservamos la mesa
+        // guardada; ponerla temporalmente en null hacía parpadear el acceso.
+        if (perfilId) {
+            lobbyMesaJugador = lista.find((mesa) => [mesa.jugador1_id, mesa.jugador2_id, mesa.jugador3_id, mesa.jugador4_id].includes(perfilId)) || null;
+        }
+        guardarEstadoAccesosRapidos();
+        pintarAccesosRapidos();
+    }
+
+    function actualizarTorneoActivoLobby(rows) {
+        const estadosActivos = ['en_curso', 'inscripciones', 'cerrado'];
+        if (document.getElementById('admin-panel-btn') && !document.getElementById('admin-panel-btn').classList.contains('hidden')) {
+            estadosActivos.push('borrador');
+        }
+        const prioridad = { en_curso: 0, inscripciones: 1, cerrado: 2, borrador: 3 };
+        lobbyTorneoActivo = (Array.isArray(rows) ? rows : [])
+            .filter((torneo) => estadosActivos.includes(torneo.estado))
+            .sort((a, b) => (prioridad[a.estado] ?? 9) - (prioridad[b.estado] ?? 9) || new Date(b.created_at || 0) - new Date(a.created_at || 0))[0] || null;
+        guardarEstadoAccesosRapidos();
+        pintarAccesosRapidos();
+    }
+
+    async function cargarTorneoActivoLobby() {
+        try {
+            const cache = JSON.parse(localStorage.getItem('club_domino_torneos_home_stable_v3') || 'null');
+            if (Array.isArray(cache?.rows)) actualizarTorneoActivoLobby(cache.rows);
+        } catch (error) {
+            console.warn('No se pudo leer la caché de torneos del lobby.', error);
+        }
+
+        try {
+            const { data, error } = await supabase
+                .from('torneos_v2')
+                .select('id,nombre,estado,created_at')
+                .order('created_at', { ascending: false });
+            if (error) throw error;
+            actualizarTorneoActivoLobby(data || []);
+        } catch (error) {
+            console.warn('No se pudo actualizar el acceso de torneos.', error);
+        }
+    }
+
+    function actualizarMarcadoresJugadorLobby(listaClasificacion) {
+        const perfilId = perfilUsuario?.id;
+        if (!perfilId) return;
+
+        const posicion = (Array.isArray(listaClasificacion) ? listaClasificacion : [])
+            .findIndex((item) => item.id === perfilId);
+        lobbyRankingActual = posicion >= 0 ? posicion + 1 : null;
+
+        const partidas = (Array.isArray(cacheMesasCerradas) ? cacheMesasCerradas : [])
+            .filter((mesa) => [mesa.jugador1_id, mesa.jugador2_id, mesa.jugador3_id, mesa.jugador4_id].includes(perfilId))
+            .map((mesa) => {
+                const totales = (mesa.manos || []).reduce((acumulado, mano) => {
+                    if (!mano.anulada) {
+                        acumulado.a += Number(mano.puntos_pareja1 || 0);
+                        acumulado.b += Number(mano.puntos_pareja2 || 0);
+                    }
+                    return acumulado;
+                }, { a: 0, b: 0 });
+                const estaEnA = mesa.jugador1_id === perfilId || mesa.jugador3_id === perfilId;
+                const gano = estaEnA ? totales.a > totales.b : totales.b > totales.a;
+                return { fecha: new Date(mesa.created_at || 0).getTime(), gano };
+            })
+            .sort((a, b) => a.fecha - b.fecha);
+
+        lobbyRachaActual = 0;
+        partidas.forEach((partida) => { lobbyRachaActual = partida.gano ? lobbyRachaActual + 1 : 0; });
+        guardarEstadoAccesosRapidos();
+        pintarAccesosRapidos();
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        actualizarTemaLobby();
+        hidratarEstadoAccesosRapidos();
+        pintarAccesosRapidos();
+    });
+
+    const SUPABASE_URL = 'https://kzbslfwupzwczmjqfjem.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt6YnNsZnd1cHp3Y3ptanFmamVtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODcxNDI1MzksImV4cCI6MjEwMjcxODUzOX0.qeeh2FV3zKRet-jRMVvJUwBm9jYHsLbWSYWIao574qc';
+
+    var supabase =
+        window.supabaseClient ||
+        window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    if (!window.supabaseClient) {
+        window.supabaseClient = supabase;
+    }
+
+    let usuarioActual = null;
+    let perfilUsuario = null;
+    let datosIndexCache = JSON.parse(localStorage.getItem('cache_index_general_datos') || '{}');
+    let cachePerfiles = datosIndexCache.perfiles || [];
+    let cacheManos = datosIndexCache.manos || [];
+    let cacheMesasCerradas = datosIndexCache.mesasCerradas || [];
+    if (Array.isArray(datosIndexCache.mesas)) {
+        const datosIniciales = prepararDatosClasificatoria(cachePerfiles, cacheManos, datosIndexCache.mesas);
+        cachePerfiles = datosIniciales.perfiles; cacheManos = datosIniciales.manos; cacheMesasCerradas = datosIniciales.mesasCerradas;
+    }
+    let temporizadorActualizacionClasificatoria = null;
+    let intervaloMesasEnVivo = null;
+    let cargandoMesasEnVivo = false;
+    let cacheClasificatoriaHidratada = false;
+    let firmaMesasLobby = '';
+    let firmaClasificatoriaLobby = '';
+
+    function firmaDatosLobby(valor) {
+        const normalizar = dato => {
+            if (Array.isArray(dato)) {
+                return dato
+                    .map(normalizar)
+                    .sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
+            }
+            if (dato && typeof dato === 'object') {
+                return Object.keys(dato).sort().reduce((salida, clave) => {
+                    salida[clave] = normalizar(dato[clave]);
+                    return salida;
+                }, {});
+            }
+            return dato;
+        };
+        return JSON.stringify(normalizar(valor));
+    }
+
+    // TORNEOS V3: versión de la caché de clasificación.
+    // Si cambia esta versión, se descarta la caché anterior una sola vez.
+    const CLASIFICATORIA_CACHE_VERSION='v4-fecha-partida';
+    if(localStorage.getItem('clasificatoria_cache_version')!==CLASIFICATORIA_CACHE_VERSION){
+        localStorage.removeItem('cache_index_general_datos');
+        localStorage.setItem('clasificatoria_cache_version',CLASIFICATORIA_CACHE_VERSION);
+        datosIndexCache={};
+        cachePerfiles=[];
+        cacheManos=[];
+        cacheMesasCerradas=[];
+    }
+
+
+    const Router = {
+        routes: {
+            '': () => {},
+            mesas: () => document.getElementById('mesas-section').classList.remove('hidden'),
+            clasificatoria: () => document.getElementById('clasificatoria-section').classList.remove('hidden'),
+            crear: () => document.getElementById('crear-mesa-card').classList.remove('hidden')
+        },
+        init() { window.addEventListener('hashchange', () => this.handleRoute()); this.handleRoute(); },
+        navigate(route) { window.location.hash = route; },
+        handleRoute() { const hash = window.location.hash.slice(1) || ''; if (this.routes[hash]) this.routes[hash](); }
+    };
+
+    function hidratarDesdeCacheInstantaneo() {
+        try {
+            const cacheMesasStr = localStorage.getItem('cache_mesas_activas');
+            if (cacheMesasStr) {
+                const mesasCached = JSON.parse(cacheMesasStr);
+                const contenedor = document.getElementById('lista-mesas');
+                if (contenedor && Array.isArray(mesasCached)) {
+                    renderizarListaMesas(mesasCached, contenedor);
+                    actualizarBadgingApp(mesasCached.length);
+                    firmaMesasLobby = firmaDatosLobby(mesasCached);
+                }
+            }
+
+            const cacheIndexStr = localStorage.getItem('cache_index_general_datos');
+            if (!cacheIndexStr) return;
+
+            const datosCached = JSON.parse(cacheIndexStr);
+            if (!datosCached || !datosCached.perfiles) return;
+            firmaClasificatoriaLobby = firmaDatosLobby(datosCached);
+
+            if (Array.isArray(datosCached.mesas)) {
+                const datosPreparados = prepararDatosClasificatoria(
+                    datosCached.perfiles || [],
+                    datosCached.manos || [],
+                    datosCached.mesas
+                );
+                cachePerfiles = datosPreparados.perfiles;
+                cacheManos = datosPreparados.manos;
+                cacheMesasCerradas = datosPreparados.mesasCerradas;
+            } else {
+                cachePerfiles = datosCached.perfiles || [];
+                cacheManos = datosCached.manos || [];
+                cacheMesasCerradas = datosCached.mesasCerradas || [];
+            }
+
+            // Estos elementos solo se manipulan después de que el DOM exista.
+            aplicarFiltrosClasificatoria();
+            calcularJugadorOnFire();
+            verificarCumpleanosClub();
+        } catch (e) {
+            console.error('Error al hidratar caché del lobby:', e);
+        }
+    }
+
+        function obtenerFechaEfectivaPartida(mesa, manosMesa = []) {
+            const marcasTiempo = manosMesa
+                .map(mano => mano?.created_at || mano?.creado_en || mano?.fecha_hora)
+                .map(valor => valor ? new Date(valor).getTime() : NaN)
+                .filter(Number.isFinite);
+
+            if (marcasTiempo.length > 0) {
+                return new Date(Math.max(...marcasTiempo)).toISOString();
+            }
+
+            return mesa?.created_at || mesa?.creado_en || null;
+        }
+
+        function prepararDatosClasificatoria(perfiles = [], manos = [], mesas = []) {
+            // ------------------------------------------------------
+            // TORNEOS V3:
+            // Una mesa normal siempre cuenta.
+            // Una mesa de torneo puede traer cuenta_tabla_general=false.
+            // Esas partidas se excluyen de Clasificatoria General,
+            // Jugador On Fire y cualquier cálculo que use cacheManos.
+            // ------------------------------------------------------
+            const mesasValidas = (mesas || []).filter(
+                mesa => mesa && mesa.cuenta_tabla_general !== false
+            );
+
+            const idsMesasValidas = new Set(mesasValidas.map(m => m.id));
+            const manosValidas = (manos || []).filter(
+                mano => mano && idsMesasValidas.has(mano.mesa_id)
+            );
+
+            const mesasPorId = new Map();
+            const manosPorMesa = new Map();
+
+            mesasValidas.forEach(mesa => {
+                mesasPorId.set(mesa.id, mesa);
+            });
+
+            manosValidas.forEach(mano => {
+                if (!mano || mano.anulada) return;
+                if (!manosPorMesa.has(mano.mesa_id)) manosPorMesa.set(mano.mesa_id, []);
+                manosPorMesa.get(mano.mesa_id).push(mano);
+            });
+
+            const manosConMesas = manosValidas.map(mano => ({
+                ...mano,
+                mesas: mesasPorId.get(mano.mesa_id) || null
+            }));
+
+            const mesasCerradas = mesasValidas
+                .filter(mesa => mesa.estado === 'cerrada')
+                .map(mesa => {
+                    const manosMesa = manosPorMesa.get(mesa.id) || [];
+                    return {
+                        ...mesa,
+                        created_at: obtenerFechaEfectivaPartida(mesa, manosMesa),
+                        manos: manosMesa
+                    };
+                });
+
+            return { perfiles, manos: manosConMesas, mesasCerradas };
+        }
+
+
+        function programarActualizacionClasificatoria() {
+            clearTimeout(temporizadorActualizacionClasificatoria);
+            temporizadorActualizacionClasificatoria = setTimeout(() => {
+                inicializarDatosClasificatoria(true);
+            }, 350);
+        }
+
+        async function actualizarBadgingApp(count) {
+            if ('setAppBadge' in navigator) {
+                try {
+                    if (count > 0) {
+                        await navigator.setAppBadge(count);
+                    } else {
+                        await navigator.clearAppBadge();
+                    }
+                } catch (e) {
+                    console.error("Error al actualizar el badge de la PWA:", e);
+                }
+            }
+        }
+
+
+        function toggleFiltrosDesplegables() {
+            const box = document.getElementById('filtros-box-container');
+            box.classList.toggle('hidden');
+        }
+
+
+        async function verificarCumpleanosClub() {
+            const banner = document.getElementById('cumpleanos-banner');
+            const textoBox = document.getElementById('cumpleanos-texto');
+            const perfiles = Array.isArray(cachePerfiles) ? cachePerfiles : [];
+
+            if (!banner || !textoBox) return;
+
+            if (perfiles.length === 0) {
+                textoBox.innerHTML = '';
+                banner.classList.add('hidden');
+                return;
+            }
+
+            const hoy = new Date();
+            const mesHoy = hoy.getMonth();
+            const diaHoy = hoy.getDate();
+            const diaSemanaHoy = hoy.getDay();
+            const horaActual = hoy.getHours();
+            const cumpleanerosTexto = [];
+
+            perfiles.forEach(p => {
+                if (!p || !p.fecha_nacimiento) return;
+
+                const partes = String(p.fecha_nacimiento).substring(0, 10).split('-');
+                if (partes.length < 3) return;
+
+                const mesCumple = parseInt(partes[1], 10) - 1;
+                const diaCumple = parseInt(partes[2], 10);
+                const nombreMostrar = p.username || p.nombre_completo || 'Jugador';
+
+                if (mesCumple === mesHoy && diaCumple === diaHoy) {
+                    cumpleanerosTexto.push(`¡Hoy está de cumpleaños <strong>${nombreMostrar}</strong>! Le deseamos muchas felicidades en su día.`);
+                    return;
+                }
+
+                const fechaCumpleEsteAno = new Date(hoy.getFullYear(), mesCumple, diaCumple);
+                const fechaJuevesCumple = new Date(fechaCumpleEsteAno);
+                const dayOfWeek = fechaJuevesCumple.getDay();
+
+                if (dayOfWeek !== 4) {
+                    let diff = (4 - dayOfWeek + 7) % 7;
+                    if (diff === 0) diff = 7;
+                    fechaJuevesCumple.setDate(fechaJuevesCumple.getDate() + diff);
+                }
+
+                const esMismoJueves = (
+                    hoy.getFullYear() === fechaJuevesCumple.getFullYear() &&
+                    hoy.getMonth() === fechaJuevesCumple.getMonth() &&
+                    hoy.getDate() === fechaJuevesCumple.getDate()
+                );
+
+                if (esMismoJueves && diaSemanaHoy === 4 && horaActual >= 19 && horaActual < 22) {
+                    cumpleanerosTexto.push(`¡Celebrando el cumpleaños de <strong>${nombreMostrar}</strong> en nuestra tradicional jugada de jueves!`);
+                }
+            });
+
+            if (cumpleanerosTexto.length > 0) {
+                textoBox.innerHTML = cumpleanerosTexto.join('<br>');
+                banner.classList.remove('hidden');
+            } else {
+                textoBox.innerHTML = '';
+                banner.classList.add('hidden');
+            }
+        }
+
+
+        function obtenerVentanaSemanalOnFire(referencia = new Date()) {
+            const ahora = new Date(referencia);
+            const inicio = new Date(ahora);
+
+            // La jugada semanal comienza cada jueves a las 8:00 p. m.
+            // Si todavía no ha llegado ese momento esta semana, usamos
+            // la jornada del jueves anterior para mantener el galardón visible.
+            const diasDesdeJueves = (ahora.getDay() - 4 + 7) % 7;
+            inicio.setDate(ahora.getDate() - diasDesdeJueves);
+            inicio.setHours(20, 0, 0, 0);
+
+            if (ahora < inicio) {
+                inicio.setDate(inicio.getDate() - 7);
+            }
+
+            // La misma jornada puede cruzar la medianoche y termina
+            // el viernes a las 6:00 a. m.
+            const fin = new Date(inicio);
+            fin.setDate(fin.getDate() + 1);
+            fin.setHours(6, 0, 0, 0);
+
+            return { inicio, fin };
+        }
+
+        function calcularJugadorOnFire() {
+            const galardonCard = document.getElementById('galardon-section');
+            const contenedorOnFire = document.getElementById('on-fire-container');
+
+            if (!galardonCard || !contenedorOnFire) return;
+
+            if (!Array.isArray(cacheMesasCerradas) || cacheMesasCerradas.length === 0 ||
+                !Array.isArray(cachePerfiles) || cachePerfiles.length === 0) {
+                galardonCard.classList.add('hidden');
+                return;
+            }
+
+            const { inicio, fin } = obtenerVentanaSemanalOnFire();
+            const statsOnFire = {};
+
+            // IMPORTANTE:
+            // 1 mesa cerrada = 1 partida. No contamos manos individuales.
+            // cacheMesasCerradas ya excluye mesas con cuenta_tabla_general = false.
+            cacheMesasCerradas.forEach(mesa => {
+                if (!mesa || mesa.estado !== 'cerrada') return;
+                if (mesa.cuenta_tabla_general === false) return;
+
+                const fechaPartida = mesa.created_at ? new Date(mesa.created_at) : null;
+                if (!fechaPartida || Number.isNaN(fechaPartida.getTime())) return;
+                if (fechaPartida < inicio || fechaPartida >= fin) return;
+
+                const manosMesa = Array.isArray(mesa.manos)
+                    ? mesa.manos.filter(m => m && !m.anulada)
+                    : [];
+
+                if (manosMesa.length === 0) return;
+
+                let total1 = 0;
+                let total2 = 0;
+
+                manosMesa.forEach(mano => {
+                    total1 += Number(mano.puntos_pareja1 || 0);
+                    total2 += Number(mano.puntos_pareja2 || 0);
+                });
+
+                let ganadora = 0;
+                if (total1 > total2) ganadora = 1;
+                else if (total2 > total1) ganadora = 2;
+
+                if (ganadora === 0) return;
+
+                const equipoA = [mesa.jugador1_id, mesa.jugador3_id].filter(Boolean);
+                const equipoB = [mesa.jugador2_id, mesa.jugador4_id].filter(Boolean);
+
+                // La partida se conserva completa aunque participe un invitado.
+                // Después filtramos quién puede ganar el galardón.
+                equipoA.forEach(id => {
+                    if (!statsOnFire[id]) statsOnFire[id] = { partidas: 0, vic: 0, der: 0 };
+                    statsOnFire[id].partidas++;
+                    if (ganadora === 1) statsOnFire[id].vic++;
+                    else statsOnFire[id].der++;
+                });
+
+                equipoB.forEach(id => {
+                    if (!statsOnFire[id]) statsOnFire[id] = { partidas: 0, vic: 0, der: 0 };
+                    statsOnFire[id].partidas++;
+                    if (ganadora === 2) statsOnFire[id].vic++;
+                    else statsOnFire[id].der++;
+                });
+            });
+
+            const candidatos = [];
+
+            Object.entries(statsOnFire).forEach(([id, data]) => {
+                const perfil = cachePerfiles.find(p => p.id === id);
+                if (!perfil) return;
+
+                // Los invitados pueden participar y sus partidas cuentan para
+                // los demás jugadores, pero no compiten por el galardón On Fire.
+                if ((perfil.rol || '').toLowerCase() === 'invitado') return;
+
+                const eficiencia = data.partidas > 0 ? (data.vic / data.partidas) : 0;
+
+                if (data.partidas >= 8 && eficiencia >= 0.75) {
+                    candidatos.push({
+                        id,
+                        nombre: perfil.username || perfil.nombre_completo || 'Jugador',
+                        eficiencia: eficiencia * 100,
+                        partidas: data.partidas,
+                        vic: data.vic,
+                        der: data.der
+                    });
+                }
+            });
+
+            candidatos.sort((a, b) =>
+                b.eficiencia - a.eficiencia ||
+                b.vic - a.vic ||
+                b.partidas - a.partidas ||
+                String(a.nombre).localeCompare(String(b.nombre), 'es', { sensitivity: 'base' })
+            );
+
+            if (candidatos.length === 0) {
+                contenedorOnFire.innerHTML = '';
+                galardonCard.classList.add('hidden');
+                return;
+            }
+
+            const ganador = candidatos[0];
+            galardonCard.classList.remove('hidden');
+            contenedorOnFire.innerHTML = `
+                <div class="on-fire-content">
+                    <div>
+                        <div style="font-size: 0.75rem; color: var(--accent-amber); font-weight: bold; text-transform: uppercase;">Destacado Oficial</div>
+                        <div style="font-size: 1.1rem; font-weight: 900; color: var(--text); margin-top: 2px;">${ganador.nombre}</div>
+                        <div style="font-size: 0.78rem; color: var(--text-muted); margin-top: 2px;">Partidas jugadas: ${ganador.partidas} (${ganador.vic} Victorias)</div>
+                    </div>
+                    <div style="text-align: right;">
+                        <span style="font-size: 0.7rem; color: var(--text-muted); display: block;">Eficiencia</span>
+                        <span style="font-size: 1.3rem; font-weight: 900; color: var(--accent-green);">${ganador.eficiencia.toFixed(1)}%</span>
+                    </div>
+                </div>
+            `;
+        }
+
+        function toggleMenuUsuario() {
+            const menu = document.getElementById('user-dropdown-menu');
+            const arrow = document.getElementById('menu-arrow');
+            menu.classList.toggle('hidden');
+            arrow.style.transform = menu.classList.contains('hidden') ? 'rotate(0deg)' : 'rotate(180deg)';
+        }
+
+    async function verificarSesion() {
+        if (navigator.onLine === false) {
+            try {
+                const perfilCache = JSON.parse(localStorage.getItem('cache_perfil') || 'null');
+                if (perfilCache) {
+                    perfilUsuario = perfilCache;
+                    pintarDatosPerfilUI();
+                    return;
+                }
+            } catch (error) {}
+            mostrarModoInvitado();
+            return;
+        }
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session) { usuarioActual = session.user; await cargarPerfil(); return; }
+        if (localStorage.getItem('modo_invitado') === 'true') { mostrarModoInvitado(); return; }
+        window.location.replace('login.html');
+    }
+
+        async function cargarPerfil() {
+            const perfilCache = localStorage.getItem('cache_perfil');
+            if (perfilCache) {
+                perfilUsuario = JSON.parse(perfilCache);
+                pintarDatosPerfilUI();
+            }
+
+            const { data, error } = await supabase
+                .from('perfiles')
+                .select('*')
+                .eq('auth_user_id', usuarioActual.id)
+                .single();
+
+            if (!error && data) {
+                perfilUsuario = data;
+                localStorage.setItem('cache_perfil', JSON.stringify(data));
+                pintarDatosPerfilUI();
+            }
+        }
+
+        function pintarDatosPerfilUI() {
+            if (!perfilUsuario) return;
+            
+            document.getElementById('auth-section')?.classList.add('hidden');
+            document.getElementById('user-logged-section')?.classList.remove('hidden');
+            document.getElementById('clasificatoria-section')?.classList.remove('hidden');
+            document.getElementById('mesas-section')?.classList.remove('hidden');
+            
+            const mostrarNombre = perfilUsuario.username ? perfilUsuario.username : perfilUsuario.nombre_completo;
+            document.getElementById('user-name-display').innerText = `👤 Hola, ${mostrarNombre}`;
+            document.getElementById('user-role-display').innerText = perfilUsuario.rol || 'Miembro';
+
+            const badge = document.getElementById('user-status-badge');
+            badge.innerText = (perfilUsuario.estado || 'pendiente').toUpperCase();
+            badge.className = `status-badge status-${perfilUsuario.estado}`;
+
+            const rolUsuario = (perfilUsuario.rol || '').toString().trim().toUpperCase();
+            const rolesAdmin = ['ADMIN', 'ADMINISTRADOR', 'SUPERUSER', 'SUPERUSUARIO', 'SUPER_ADMIN', 'SUPERADMIN'];
+
+            if (rolesAdmin.includes(rolUsuario)) {
+                document.getElementById('admin-panel-btn').classList.remove('hidden');
+            } else {
+                document.getElementById('admin-panel-btn').classList.add('hidden');
+            }
+            pintarAccesosRapidos();
+
+            if (perfilUsuario.estado === 'pendiente') {
+                document.getElementById('pending-alert').classList.remove('hidden');
+                document.getElementById('acciones-usuario').classList.add('hidden');
+                document.getElementById('crear-mesa-card').classList.add('hidden');
+            } else {
+                document.getElementById('pending-alert').classList.add('hidden');
+                document.getElementById('acciones-usuario').classList.remove('hidden');
+                cargarJugadoresAprobados();
+            }
+        }
+
+        function toggleCrearMesa() {
+            const card = document.getElementById('crear-mesa-card');
+            card.classList.toggle('hidden');
+            if (!card.classList.contains('hidden')) {
+                cargarJugadoresAprobados();
+            }
+        }
+
+        function mostrarModoInvitado() {
+            document.getElementById('auth-section')?.classList.add('hidden');
+            document.getElementById('user-logged-section')?.classList.remove('hidden');
+            document.getElementById('acciones-usuario').classList.add('hidden');
+            document.getElementById('crear-mesa-card').classList.add('hidden');
+            
+            document.getElementById('clasificatoria-section')?.classList.remove('hidden');
+            document.getElementById('mesas-section')?.classList.remove('hidden');
+            verificarCumpleanosClub();
+            calcularJugadorOnFire();
+
+            document.getElementById('user-name-display').innerText = '👤 Hola, Modo Invitado';
+            document.getElementById('user-role-display').innerText = 'Espectador';
+            document.getElementById('admin-panel-btn').classList.add('hidden');
+            
+            const badge = document.getElementById('user-status-badge');
+            badge.innerText = 'INVITADO';
+            badge.className = 'status-badge';
+        }
+
+        async function cargarJugadoresAprobados() {
+            const { data: mesasAbiertas, error: errMesas } = await supabase
+                .from('mesas')
+                .select('jugador1_id, jugador2_id, jugador3_id, jugador4_id')
+                .eq('estado', 'abierta');
+
+            let jugadoresOcupados = new Set();
+            if (!errMesas && mesasAbiertas) {
+                mesasAbiertas.forEach(m => {
+                    if (m.jugador1_id) jugadoresOcupados.add(m.jugador1_id);
+                    if (m.jugador2_id) jugadoresOcupados.add(m.jugador2_id);
+                    if (m.jugador3_id) jugadoresOcupados.add(m.jugador3_id);
+                    if (m.jugador4_id) jugadoresOcupados.add(m.jugador4_id);
+                });
+            }
+
+            const { data, error } = await supabase
+                .from('perfiles')
+                .select('*')
+                .eq('estado', 'aprobado')
+                .order('username', { ascending: true });
+
+            if (error) return;
+
+            const selects = ['select-j1', 'select-j2', 'select-j3', 'select-j4'];
+            selects.forEach(id => {
+                const select = document.getElementById(id);
+                select.innerHTML = '<option value="">-- Seleccionar --</option>';
+                data.forEach(j => {
+                    if (jugadoresOcupados.has(j.id)) return;
+                    const nombreMostrar = j.username || j.nombre_completo;
+                    select.innerHTML += `<option value="${j.id}">${nombreMostrar}</option>`;
+                });
+            });
+        }
+
+        async function crearNuevaMesa(e) {
+            e.preventDefault();
+            const j1 = document.getElementById('select-j1').value;
+            const j2 = document.getElementById('select-j2').value;
+            const j3 = document.getElementById('select-j3').value;
+            const j4 = document.getElementById('select-j4').value;
+            const limitePuntos = parseInt(document.getElementById('limite-puntos-mesa').value) || 200;
+
+            const setJugadores = new Set([j1, j2, j3, j4]);
+            if (setJugadores.size < 4) {
+                alert('Debes seleccionar 4 jugadores distintos para abrir la mesa.');
+                return;
+            }
+
+            const { data, error } = await supabase
+                .from('mesas')
+                .insert([{
+                    jugador1_id: j1,
+                    jugador2_id: j2,
+                    jugador3_id: j3,
+                    jugador4_id: j4,
+                    limite_puntos: limitePuntos,
+                    estado: 'abierta'
+                }])
+                .select()
+                .single();
+
+            if (error) alert('Error al crear mesa: ' + error.message);
+            else window.location.href = `mesa.html?id=${data.id}`;
+        }
+
+        async function inicializarDatosClasificatoria(esSilencioso = false) {
+            const cacheIndexStr = localStorage.getItem('cache_index_general_datos');
+
+            if (cacheIndexStr && !esSilencioso) {
+                try {
+                    const datosCached = JSON.parse(cacheIndexStr);
+                    const perfilesCache = datosCached.perfiles || [];
+                    const manosCache = datosCached.manos || [];
+
+                    // Compatibilidad con la caché anterior y con la nueva caché optimizada.
+                    if (Array.isArray(datosCached.mesas)) {
+                        const datosPreparados = prepararDatosClasificatoria(
+                            perfilesCache,
+                            manosCache,
+                            datosCached.mesas
+                        );
+                        cachePerfiles = datosPreparados.perfiles;
+                        cacheManos = datosPreparados.manos;
+                        cacheMesasCerradas = datosPreparados.mesasCerradas;
+                    } else {
+                        cachePerfiles = perfilesCache;
+                        cacheManos = manosCache;
+                        cacheMesasCerradas = datosCached.mesasCerradas || [];
+                    }
+
+                    if (document.getElementById('filtro-periodo').value === 'personalizado' && !document.getElementById('filtro-desde').value) {
+                        cambiarPeriodoRapido('semana_actual');
+                    } else {
+                        aplicarFiltrosClasificatoria();
+                    }
+                    calcularJugadorOnFire();
+                    verificarCumpleanosClub();
+                } catch (e) {
+                    console.error("Error leyendo caché index general:", e);
+                }
+            }
+
+            try {
+                // Pedimos solamente las columnas que realmente usa el lobby.
+                // Las tres consultas se ejecutan simultáneamente.
+                const [respuestaPerfiles, respuestaManos, respuestaMesas] = await Promise.all([
+                    supabase
+                        .from('perfiles')
+                        .select('id,nombre_completo,username,rol,fecha_nacimiento,estado'),
+                    supabase
+                        .from('manos')
+                        // Usamos únicamente columnas existentes y utilizadas por la app.
+                        .select('mesa_id,anulada,puntos_pareja1,puntos_pareja2,created_at')
+                        .eq('anulada', false),
+                    supabase
+                        .from('mesas')
+                        .select('id,created_at,estado,jugador1_id,jugador2_id,jugador3_id,jugador4_id,cuenta_tabla_general,torneo_v2_id')
+                ]);
+
+                const { data: perfiles, error: errP } = respuestaPerfiles;
+                const { data: manos, error: errM } = respuestaManos;
+                const { data: mesas, error: errMesas } = respuestaMesas;
+
+                if (errP || errM || errMesas) {
+                    console.error('Error cargando clasificatoria:', errP || errM || errMesas);
+                    return;
+                }
+
+                const nuevosDatos = prepararDatosClasificatoria(
+                    perfiles || [],
+                    manos || [],
+                    mesas || []
+                );
+
+                // Guardamos la versión compacta. Antes cada mano se duplicaba dentro de mesasCerradas.
+                const cacheCompacta = {
+                    perfiles: perfiles || [],
+                    manos: manos || [],
+                    mesas: mesas || []
+                };
+
+                const firmaNueva = firmaDatosLobby(cacheCompacta);
+                if (firmaNueva === firmaClasificatoriaLobby) return;
+
+                try {
+                    localStorage.setItem('cache_index_general_datos', JSON.stringify(cacheCompacta));
+                } catch (errorCache) {
+                    console.warn('No se pudo guardar la caché compacta del lobby:', errorCache);
+                }
+
+                cachePerfiles = nuevosDatos.perfiles;
+                cacheManos = nuevosDatos.manos;
+                cacheMesasCerradas = nuevosDatos.mesasCerradas;
+                firmaClasificatoriaLobby = firmaNueva;
+
+                // Mantener los filtros elegidos por el usuario. Solo fijamos
+                // la semana actual como valor inicial cuando nunca se ha usado.
+                const periodoActual = document.getElementById('filtro-periodo')?.value;
+                const desdeActual = document.getElementById('filtro-desde')?.value;
+                if (periodoActual === 'personalizado' && !desdeActual) {
+                    cambiarPeriodoRapido('semana_actual');
+                } else {
+                    aplicarFiltrosClasificatoria();
+                }
+                calcularJugadorOnFire();
+                verificarCumpleanosClub();
+            } catch (err) {
+                console.error("Error actualizando datos de clasificación en segundo plano:", err);
+            }
+        }
+
+        function cambiarPeriodoRapido(tipo) {
+            const inputDesde = document.getElementById('filtro-desde');
+            const inputHasta = document.getElementById('filtro-hasta');
+
+            const ahora = new Date();
+
+            if (tipo === 'semana_actual') {
+                const diaSemana = ahora.getDay();
+                let diasDesdeJueves = (diaSemana >= 4) ? (diaSemana - 4) : (diaSemana + 3);
+                
+                const fechaInicio = new Date(ahora);
+                fechaInicio.setDate(ahora.getDate() - diasDesdeJueves);
+                
+                const fechaFin = new Date(fechaInicio);
+                fechaFin.setDate(fechaInicio.getDate() + 6);
+
+                inputDesde.value = fechaInicio.toISOString().split('T')[0];
+                inputHasta.value = fechaFin.toISOString().split('T')[0];
+            } else if (tipo === 'todo') {
+                inputDesde.value = '';
+                inputHasta.value = '';
+            }
+            
+            aplicarFiltrosClasificatoria();
+        }
+
+        function limpiarFiltrosClasificatoria() {
+            document.getElementById('filtro-desde').value = '';
+            document.getElementById('filtro-hasta').value = '';
+            document.getElementById('filtro-periodo').value = 'todo';
+            document.getElementById('filtro-min-partidas').value = '';
+            document.getElementById('filtro-tipo-jugador').value = 'miembros';
+            const inputBusqueda = document.getElementById('filtro-buscar-jugador');
+            if (inputBusqueda) inputBusqueda.value = '';
+            aplicarFiltrosClasificatoria();
+        }
+
+        function guardarEstadoFiltrosClasificatoria() {
+            try {
+                const estado = {
+                    periodo: document.getElementById('filtro-periodo')?.value || 'semana_actual',
+                    desde: document.getElementById('filtro-desde')?.value || '',
+                    hasta: document.getElementById('filtro-hasta')?.value || '',
+                    minimo: document.getElementById('filtro-min-partidas')?.value || '',
+                    tipo: document.getElementById('filtro-tipo-jugador')?.value || 'miembros',
+                    busqueda: document.getElementById('filtro-buscar-jugador')?.value || ''
+                };
+                localStorage.setItem('estado_filtros_lobby', JSON.stringify(estado));
+            } catch (e) {}
+        }
+
+        function restaurarEstadoFiltrosClasificatoria() {
+            try {
+                const raw = localStorage.getItem('estado_filtros_lobby');
+                if (!raw) return false;
+                const estado = JSON.parse(raw);
+                if (estado.periodo) document.getElementById('filtro-periodo').value = estado.periodo;
+                if (estado.desde !== undefined) document.getElementById('filtro-desde').value = estado.desde;
+                if (estado.hasta !== undefined) document.getElementById('filtro-hasta').value = estado.hasta;
+                if (estado.minimo !== undefined) document.getElementById('filtro-min-partidas').value = estado.minimo;
+                if (estado.tipo) document.getElementById('filtro-tipo-jugador').value = estado.tipo;
+                if (estado.busqueda !== undefined) document.getElementById('filtro-buscar-jugador').value = estado.busqueda;
+                return true;
+            } catch (e) { return false; }
+        }
+
+        function obtenerClaveCacheClasificatoria() {
+            const periodo = document.getElementById('filtro-periodo')?.value || 'personalizado';
+            const desde = document.getElementById('filtro-desde')?.value || '';
+            const hasta = document.getElementById('filtro-hasta')?.value || '';
+            const minimo = document.getElementById('filtro-min-partidas')?.value || '';
+            const tipo = document.getElementById('filtro-tipo-jugador')?.value || 'miembros';
+            const busqueda = (document.getElementById('filtro-buscar-jugador')?.value || '').trim().toLowerCase();
+            return `cache_index_clasificatoria_v4_${periodo}_${desde}_${hasta}_${minimo}_${tipo}_${busqueda}`;
+        }
+
+        function guardarCacheTablaClasificatoria(html, totalFilas) {
+            try {
+                localStorage.setItem(obtenerClaveCacheClasificatoria(), JSON.stringify({
+                    html,
+                    totalFilas,
+                    guardado: Date.now()
+                }));
+            } catch (e) {
+                console.warn('No se pudo guardar la caché visual de clasificatoria:', e);
+            }
+        }
+
+        function hidratarTablaClasificatoriaDesdeCache() {
+            const tbody = document.getElementById('cuerpo-tabla-clasificatoria');
+            if (!tbody) return false;
+
+            try {
+                const raw = localStorage.getItem(obtenerClaveCacheClasificatoria());
+                if (!raw) return false;
+
+                const cache = JSON.parse(raw);
+                if (!cache || typeof cache.html !== 'string' || !cache.html.trim()) return false;
+
+                tbody.innerHTML = cache.html;
+                return true;
+            } catch (e) {
+                console.warn('No se pudo hidratar la tabla desde caché:', e);
+                return false;
+            }
+        }
+
+        function actualizarResumenClasificatoria(listaClasificacion) {
+            const lista = Array.isArray(listaClasificacion) ? listaClasificacion : [];
+            const posicion = document.getElementById('clasificatoria-resumen-posicion');
+            const lider = document.getElementById('clasificatoria-resumen-lider');
+            const total = document.getElementById('clasificatoria-resumen-total');
+            if (!posicion || !lider || !total) return;
+
+            const perfilId = perfilUsuario?.id;
+            const indiceUsuario = perfilId ? lista.findIndex((item) => item.id === perfilId) : -1;
+            const posicionNueva = perfilId
+                ? (indiceUsuario >= 0 ? `#${indiceUsuario + 1}` : '—')
+                : (lobbyRankingActual ? `#${lobbyRankingActual}` : posicion.textContent || '—');
+            const liderNuevo = lista[0]?.jugador || 'Sin datos';
+            const totalNuevo = String(lista.length);
+            if (posicion.textContent !== posicionNueva) posicion.textContent = posicionNueva;
+            if (lider.textContent !== liderNuevo) lider.textContent = liderNuevo;
+            if (total.textContent !== totalNuevo) total.textContent = totalNuevo;
+            if (lider.title !== (lista[0]?.jugador || '')) lider.title = lista[0]?.jugador || '';
+        }
+
+
+        function cargarScriptPDFLobby(id, src) {
+            return new Promise((resolve, reject) => {
+                const existente = document.getElementById(id);
+                if (existente) {
+                    if (existente.dataset.loaded === '1') {
+                        resolve();
+                        return;
+                    }
+                    existente.addEventListener('load', () => resolve(), { once: true });
+                    existente.addEventListener('error', () => reject(new Error('No se pudo cargar ' + src)), { once: true });
+                    return;
+                }
+
+                const script = document.createElement('script');
+                script.id = id;
+                script.src = src;
+                script.async = true;
+                script.onload = () => {
+                    script.dataset.loaded = '1';
+                    resolve();
+                };
+                script.onerror = () => reject(new Error('No se pudo cargar ' + src));
+                document.head.appendChild(script);
+            });
+        }
+
+        async function asegurarLibreriasPDFClasificatoria() {
+            if (!window.jspdf?.jsPDF) {
+                await cargarScriptPDFLobby(
+                    'jspdf-lobby-lib',
+                    'https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js'
+                );
+            }
+
+            const { jsPDF } = window.jspdf || {};
+            if (!jsPDF) throw new Error('jsPDF no está disponible.');
+
+            const prueba = new jsPDF();
+            if (typeof prueba.autoTable !== 'function') {
+                await cargarScriptPDFLobby(
+                    'jspdf-autotable-lobby-lib',
+                    'https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js'
+                );
+            }
+        }
+
+        function textoCeldaClasificatoriaPDF(celda) {
+            if (!celda) return '';
+            const eficiencia = celda.querySelector('.eficiencia-txt');
+            return (eficiencia?.textContent || celda.textContent || '')
+                .replace(/\s+/g, ' ')
+                .trim();
+        }
+
+        function obtenerFilasClasificatoriaPDF() {
+            const tbody = document.getElementById('cuerpo-tabla-clasificatoria');
+            if (!tbody) return [];
+
+            return [...tbody.querySelectorAll('tr')]
+                .map(fila => [...fila.querySelectorAll('td')].map(textoCeldaClasificatoriaPDF))
+                .filter(celdas => celdas.length === 6);
+        }
+
+        function formatearFechaFiltroPDF(valor) {
+            if (!valor) return '';
+            const partes = String(valor).split('-');
+            if (partes.length !== 3) return valor;
+            return `${partes[2]}/${partes[1]}/${partes[0]}`;
+        }
+
+        function obtenerResumenFiltrosPDF() {
+            const tipo = document.getElementById('filtro-tipo-jugador');
+            const periodo = document.getElementById('filtro-periodo');
+            const desde = document.getElementById('filtro-desde')?.value || '';
+            const hasta = document.getElementById('filtro-hasta')?.value || '';
+            const minimo = document.getElementById('filtro-min-partidas')?.value || '';
+            const buscar = document.getElementById('filtro-buscar-jugador')?.value?.trim() || '';
+
+            const partes = [];
+            if (tipo?.selectedOptions?.[0]?.textContent) partes.push(tipo.selectedOptions[0].textContent.trim());
+            if (periodo?.selectedOptions?.[0]?.textContent) partes.push(periodo.selectedOptions[0].textContent.trim());
+
+            if (desde || hasta) {
+                const rango = [
+                    desde ? `desde ${formatearFechaFiltroPDF(desde)}` : '',
+                    hasta ? `hasta ${formatearFechaFiltroPDF(hasta)}` : ''
+                ].filter(Boolean).join(' ');
+                if (rango) partes.push(rango);
+            }
+
+            if (minimo) partes.push(`mínimo ${minimo} partida${Number(minimo) === 1 ? '' : 's'}`);
+            if (buscar) partes.push(`búsqueda: "${buscar}"`);
+
+            return partes.join(' · ') || 'Sin filtros adicionales';
+        }
+
+        async function obtenerLogoClasificatoriaPDF() {
+            try {
+                const img = document.querySelector('header img');
+                if (!img) return null;
+
+                if (!img.complete || !img.naturalWidth) {
+                    await new Promise(resolve => {
+                        let listo = false;
+                        const terminar = () => {
+                            if (listo) return;
+                            listo = true;
+                            resolve();
+                        };
+                        img.addEventListener('load', terminar, { once: true });
+                        img.addEventListener('error', terminar, { once: true });
+                        window.setTimeout(terminar, 1500);
+                    });
+                }
+
+                if (!img.naturalWidth || !img.naturalHeight) return null;
+
+                const canvas = document.createElement('canvas');
+                canvas.width = img.naturalWidth;
+                canvas.height = img.naturalHeight;
+                const ctx = canvas.getContext('2d');
+                if (!ctx) return null;
+                ctx.drawImage(img, 0, 0);
+                return canvas.toDataURL('image/png');
+            } catch (_) {
+                return null;
+            }
+        }
+
+        async function descargarClasificatoriaPDF(evento) {
+            evento?.stopPropagation();
+
+            const filas = obtenerFilasClasificatoriaPDF();
+            if (!filas.length) {
+                alert('No hay jugadores visibles en la clasificación para exportar.');
+                return;
+            }
+
+            const boton = document.getElementById('btn-descargar-clasificatoria-pdf');
+            const textoOriginal = boton?.textContent || '📄 Descargar PDF';
+
+            if (boton) {
+                boton.disabled = true;
+                boton.textContent = '⏳ Preparando PDF…';
+            }
+
+            try {
+                await asegurarLibreriasPDFClasificatoria();
+
+                const { jsPDF } = window.jspdf;
+                const doc = new jsPDF({
+                    orientation: 'landscape',
+                    unit: 'mm',
+                    format: 'a4'
+                });
+
+                if (typeof doc.autoTable !== 'function') {
+                    throw new Error('No se pudo inicializar la tabla PDF.');
+                }
+
+                const pageWidth = doc.internal.pageSize.getWidth();
+                const pageHeight = doc.internal.pageSize.getHeight();
+                const margen = 14;
+
+                doc.setFillColor(11, 17, 32);
+                doc.rect(0, 0, pageWidth, 31, 'F');
+
+                const logo = await obtenerLogoClasificatoriaPDF();
+                let xTitulo = margen;
+                if (logo) {
+                    try {
+                        doc.addImage(logo, 'PNG', margen, 5.5, 19, 19);
+                        xTitulo = margen + 25;
+                    } catch (_) {}
+                }
+
+                doc.setTextColor(255, 255, 255);
+                doc.setFont('helvetica', 'bold');
+                doc.setFontSize(18);
+                doc.text('Clasificación General', xTitulo, 13);
+
+                doc.setFont('helvetica', 'normal');
+                doc.setFontSize(9.5);
+                doc.setTextColor(191, 219, 254);
+                doc.text('Club Dominó y Romo · Sistema de Anote y Estadísticas', xTitulo, 20);
+
+                const fechaGeneracion = new Intl.DateTimeFormat('es-DO', {
+                    dateStyle: 'long',
+                    timeStyle: 'short',
+                    timeZone: 'America/Santo_Domingo'
+                }).format(new Date());
+
+                doc.setFontSize(8.5);
+                doc.setTextColor(71, 85, 105);
+                doc.text(`Generado: ${fechaGeneracion}`, margen, 39);
+
+                const filtros = obtenerResumenFiltrosPDF();
+                const lineasFiltros = doc.splitTextToSize(`Filtros: ${filtros}`, pageWidth - (margen * 2));
+                doc.text(lineasFiltros, margen, 44);
+
+                const startY = 47 + Math.max(0, (lineasFiltros.length - 1) * 4);
+
+                doc.autoTable({
+                    startY,
+                    head: [[
+                        'Posición',
+                        'Jugador',
+                        'Victorias',
+                        'Derrotas',
+                        'Partidas',
+                        'Eficiencia'
+                    ]],
+                    body: filas,
+                    theme: 'grid',
+                    margin: { left: margen, right: margen, bottom: 15 },
+                    styles: {
+                        font: 'helvetica',
+                        fontSize: 9,
+                        cellPadding: 3.2,
+                        textColor: [30, 41, 59],
+                        lineColor: [226, 232, 240],
+                        lineWidth: 0.25,
+                        valign: 'middle'
+                    },
+                    headStyles: {
+                        fillColor: [37, 99, 235],
+                        textColor: [255, 255, 255],
+                        fontStyle: 'bold',
+                        halign: 'center',
+                        lineColor: [37, 99, 235]
+                    },
+                    alternateRowStyles: {
+                        fillColor: [248, 250, 252]
+                    },
+                    columnStyles: {
+                        0: { halign: 'center', cellWidth: 24, fontStyle: 'bold' },
+                        1: { cellWidth: 'auto', fontStyle: 'bold' },
+                        2: { halign: 'center', cellWidth: 28 },
+                        3: { halign: 'center', cellWidth: 28 },
+                        4: { halign: 'center', cellWidth: 28 },
+                        5: { halign: 'center', cellWidth: 32, fontStyle: 'bold' }
+                    },
+                    didParseCell: function(data) {
+                        if (data.section !== 'body') return;
+                        const posicion = parseInt(String(data.row.raw?.[0] || '').replace(/\D/g, ''), 10);
+
+                        if (posicion === 1) {
+                            data.cell.styles.fillColor = [255, 248, 220];
+                            if (data.column.index === 0) data.cell.styles.textColor = [180, 83, 9];
+                        } else if (posicion === 2) {
+                            data.cell.styles.fillColor = [248, 250, 252];
+                            if (data.column.index === 0) data.cell.styles.textColor = [71, 85, 105];
+                        } else if (posicion === 3) {
+                            data.cell.styles.fillColor = [255, 247, 237];
+                            if (data.column.index === 0) data.cell.styles.textColor = [154, 52, 18];
+                        }
+                    }
+                });
+
+                const totalPaginas = doc.internal.getNumberOfPages();
+                for (let pagina = 1; pagina <= totalPaginas; pagina++) {
+                    doc.setPage(pagina);
+                    doc.setDrawColor(226, 232, 240);
+                    doc.line(margen, pageHeight - 10, pageWidth - margen, pageHeight - 10);
+                    doc.setFont('helvetica', 'normal');
+                    doc.setFontSize(7.5);
+                    doc.setTextColor(100, 116, 139);
+                    doc.text('Club Dominó y Romo', margen, pageHeight - 5.5);
+                    doc.text(
+                        `Página ${pagina} de ${totalPaginas}`,
+                        pageWidth - margen,
+                        pageHeight - 5.5,
+                        { align: 'right' }
+                    );
+                }
+
+                const fechaArchivo = new Intl.DateTimeFormat('en-CA', {
+                    timeZone: 'America/Santo_Domingo',
+                    year: 'numeric',
+                    month: '2-digit',
+                    day: '2-digit'
+                }).format(new Date());
+
+                doc.save(`Clasificacion_General_${fechaArchivo}.pdf`);
+            } catch (error) {
+                console.error('[PDF] No se pudo generar la clasificación:', error);
+                alert(
+                    navigator.onLine
+                        ? 'No se pudo generar el PDF. Inténtalo nuevamente.'
+                        : 'Necesitas conexión a Internet la primera vez para cargar el generador de PDF.'
+                );
+            } finally {
+                if (boton) {
+                    boton.disabled = false;
+                    boton.textContent = textoOriginal;
+                }
+            }
+        }
+
+        function aplicarFiltrosClasificatoria() {
+            const tbody = document.getElementById('cuerpo-tabla-clasificatoria');
+            if (!tbody) return;
+
+            guardarEstadoFiltrosClasificatoria();
+
+            const valDesde = document.getElementById('filtro-desde').value;
+            const valHasta = document.getElementById('filtro-hasta').value;
+            const minPartidas = parseInt(document.getElementById('filtro-min-partidas').value) || 0;
+            const tipoJugador = document.getElementById('filtro-tipo-jugador').value;
+            const textoBusqueda = (document.getElementById('filtro-buscar-jugador')?.value || '').toLowerCase().trim();
+
+            let mesasFiltradas = cacheMesasCerradas;
+
+            if (valDesde) {
+                const fDesde = new Date(valDesde + 'T00:00:00');
+                mesasFiltradas = mesasFiltradas.filter(m => new Date(m.created_at) >= fDesde);
+            }
+
+            if (valHasta) {
+                const fHasta = new Date(valHasta + 'T23:59:59');
+                mesasFiltradas = mesasFiltradas.filter(m => new Date(m.created_at) <= fHasta);
+            }
+
+            let perfilesFiltrados = cachePerfiles;
+            if (tipoJugador === 'miembros') {
+                perfilesFiltrados = cachePerfiles.filter(p => (p.rol || '').toLowerCase() !== 'invitado');
+            } else if (tipoJugador === 'invitados') {
+                perfilesFiltrados = cachePerfiles.filter(p => (p.rol || '').toLowerCase() === 'invitado');
+            }
+
+            let stats = {};
+            perfilesFiltrados.forEach(p => {
+                const nombreMostrar = p.username ? p.username : (p.nombre_completo || 'Jugador');
+                stats[p.id] = { id: p.id, jugador: nombreMostrar, vic: 0, der: 0 };
+            });
+
+            mesasFiltradas.forEach(mesa => {
+                let totalP1 = 0;
+                let totalP2 = 0;
+
+                if (mesa.manos && mesa.manos.length > 0) {
+                    mesa.manos.forEach(mano => {
+                        if (!mano.anulada) {
+                            totalP1 += (mano.puntos_pareja1 || 0);
+                            totalP2 += (mano.puntos_pareja2 || 0);
+                        }
+                    });
+                }
+
+                let ganadoraMesa = 0;
+                if (totalP1 > totalP2) ganadoraMesa = 1;
+                else if (totalP2 > totalP1) ganadoraMesa = 2;
+
+                if (ganadoraMesa === 0) return;
+
+                const p1 = mesa.jugador1_id, p2 = mesa.jugador2_id, p3 = mesa.jugador3_id, p4 = mesa.jugador4_id;
+
+                if (ganadoraMesa === 1) {
+                    if (stats[p1]) stats[p1].vic++;
+                    if (stats[p3]) stats[p3].vic++;
+                    if (stats[p2]) stats[p2].der++;
+                    if (stats[p4]) stats[p4].der++;
+                } else if (ganadoraMesa === 2) {
+                    if (stats[p2]) stats[p2].vic++;
+                    if (stats[p4]) stats[p4].vic++;
+                    if (stats[p1]) stats[p1].der++;
+                    if (stats[p3]) stats[p3].der++;
+                }
+            });
+
+            let listaFinal = Object.values(stats).map(item => {
+                const total = item.vic + item.der;
+                const eficiencia = total > 0 ? (item.vic / total) * 100 : 0;
+                return { ...item, total, eficiencia };
+            });
+
+            if (minPartidas > 0) {
+                listaFinal = listaFinal.filter(item => item.total >= minPartidas);
+            }
+
+            // Aplicar filtro de búsqueda por texto / consulta de jugador
+            if (textoBusqueda) {
+                listaFinal = listaFinal.filter(item => item.jugador.toLowerCase().includes(textoBusqueda));
+            }
+
+            listaFinal.sort((a, b) => {
+                const difEficiencia = b.eficiencia - a.eficiencia;
+                if (Math.abs(difEficiencia) > 1e-9) return difEficiencia;
+
+                // Desempates deterministas para que la tabla no cambie de orden
+                // entre cargas cuando dos jugadores tienen la misma efectividad.
+                const difTotal = b.total - a.total;
+                if (difTotal !== 0) return difTotal;
+
+                const difVictorias = b.vic - a.vic;
+                if (difVictorias !== 0) return difVictorias;
+
+                return String(a.jugador || '').localeCompare(
+                    String(b.jugador || ''),
+                    'es',
+                    { sensitivity: 'base' }
+                );
+            });
+
+            actualizarMarcadoresJugadorLobby(listaFinal);
+            actualizarResumenClasificatoria(listaFinal);
+
+            if (listaFinal.length === 0) {
+                const htmlVacio = `<tr><td colspan="6" style="text-align: center; color: var(--text-muted); padding: 12px 0;">No hay registros de partidas completadas que coincidan con los filtros.</td></tr>`;
+                tbody.innerHTML = htmlVacio;
+                guardarCacheTablaClasificatoria(htmlVacio, 0);
+                return;
+            }
+
+            let htmlTabla = '';
+            listaFinal.forEach((item, index) => {
+                const ef = item.eficiencia.toFixed(1);
+                const posicion = index + 1;
+                htmlTabla += `
+                    <tr>
+                        <td style="text-align: center; font-weight: bold; color: var(--cyan-title);">${posicion}°</td>
+                        <td style="font-weight: bold;">${item.jugador}</td>
+                        <td style="text-align: center; color: var(--accent-green); font-weight: bold;">${item.vic}</td>
+                        <td style="text-align: center; color: var(--accent-red);">${item.der}</td>
+                        <td style="text-align: center;">${item.total}</td>
+                        <td>
+                            <div class="progress-container">
+                                <div class="progress-bar-bg">
+                                    <div class="progress-bar-fill" style="width: ${ef}%;"></div>
+                                </div>
+                                <span class="eficiencia-txt">${ef}%</span>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            });
+            tbody.innerHTML = htmlTabla;
+            guardarCacheTablaClasificatoria(htmlTabla, listaFinal.length);
+        }
+
+        async function cargarMesasActivas() {
+            const contenedor = document.getElementById('lista-mesas');
+            if (!contenedor || cargandoMesasEnVivo) return;
+
+            // La caché solo hidrata una vez al entrar. Después las actualizaciones
+            // vienen de Supabase para que los marcadores sean realmente en vivo.
+            if (!window.__lobbyMesasCacheHidratada) {
+                window.__lobbyMesasCacheHidratada = true;
+                const cacheMesas = localStorage.getItem('cache_mesas_activas');
+                if (cacheMesas) {
+                    try {
+                        const mesasCached = JSON.parse(cacheMesas);
+                        if (Array.isArray(mesasCached)) {
+                            renderizarListaMesas(mesasCached, contenedor);
+                            actualizarBadgingApp(mesasCached.length);
+                            firmaMesasLobby = firmaDatosLobby(mesasCached);
+                        }
+                    } catch (e) {
+                        console.error('Error leyendo caché de mesas:', e);
+                    }
+                }
+            }
+
+            cargandoMesasEnVivo = true;
+            try {
+                const { data: mesas, error } = await supabase
+                    .from('mesas')
+                    .select(`
+                        *,
+                        j1:jugador1_id(*),
+                        j2:jugador2_id(*),
+                        j3:jugador3_id(*),
+                        j4:jugador4_id(*),
+                        manos(*)
+                    `)
+                    .eq('estado', 'abierta')
+                    .order('created_at', { ascending: true });
+
+                if (error) {
+                    console.error('Error cargando mesas en vivo:', error);
+                    return;
+                }
+
+                if (!Array.isArray(mesas)) return;
+
+                const mesasActivasFinales = [];
+
+                for (const m of mesas) {
+                    let totalP1 = 0;
+                    let totalP2 = 0;
+
+                    (m.manos || []).forEach(mano => {
+                        if (!mano.anulada) {
+                            totalP1 += Number(mano.puntos_pareja1 || 0);
+                            totalP2 += Number(mano.puntos_pareja2 || 0);
+                        }
+                    });
+
+                    const limitePuntos = Number(m.limite_puntos || 200);
+
+                    if (totalP1 >= limitePuntos || totalP2 >= limitePuntos) {
+                        // La mesa ya llegó a la meta. El backend/trigger puede
+                        // encargarse de cerrarla; no la mostramos como activa.
+                        continue;
+                    }
+
+                    mesasActivasFinales.push(m);
+                }
+
+                const firmaNueva = firmaDatosLobby(mesasActivasFinales);
+                if (firmaNueva !== firmaMesasLobby) {
+                    localStorage.setItem('cache_mesas_activas', JSON.stringify(mesasActivasFinales));
+                    renderizarListaMesas(mesasActivasFinales, contenedor);
+                    actualizarBadgingApp(mesasActivasFinales.length);
+                    firmaMesasLobby = firmaNueva;
+                } else {
+                    // El perfil puede terminar de validarse después de hidratar la
+                    // caché; actualizamos solo su estado, sin reconstruir tarjetas.
+                    actualizarEstadoMesaJugadorLobby(mesasActivasFinales);
+                }
+
+            } finally {
+                cargandoMesasEnVivo = false;
+            }
+        }
+
+        function renderizarListaMesas(mesas, contenedor) {
+            if (!contenedor) return;
+
+            actualizarEstadoMesaJugadorLobby(mesas);
+
+            if (!mesas || mesas.length === 0) {
+                contenedor.innerHTML = '<p style="color:var(--text-muted); font-size:0.85rem; text-align:center; padding: 12px 0;">No hay partidas activas en este momento.</p>';
+                return;
+            }
+
+            contenedor.innerHTML = '';
+
+            const mesasOrdenadas = [...mesas].sort((a, b) => {
+                const ta = new Date(a.created_at || 0).getTime();
+                const tb = new Date(b.created_at || 0).getTime();
+                if (ta !== tb) return ta - tb;
+                return String(a.id || '').localeCompare(String(b.id || ''));
+            });
+            
+            mesasOrdenadas.forEach((m, i) => {
+                let totalP1 = 0;
+                let totalP2 = 0;
+                let rondas = 0;
+
+                if (m.manos && m.manos.length > 0) {
+                    m.manos.forEach(mano => {
+                        if (!mano.anulada) {
+                            totalP1 += (mano.puntos_pareja1 || 0);
+                            totalP2 += (mano.puntos_pareja2 || 0);
+                            rondas++;
+                        }
+                    });
+                }
+
+                const limitePuntos = m.limite_puntos || 200;
+                const mayorPuntaje = Math.max(totalP1, totalP2);
+                const progreso = Math.min(Math.round((mayorPuntaje / limitePuntos) * 100), 100);
+
+                const nomJ1 = m.j1?.username || m.j1?.nombre_completo || 'J1';
+                const nomJ2 = m.j2?.username || m.j2?.nombre_completo || 'J2';
+                const nomJ3 = m.j3?.username || m.j3?.nombre_completo || 'J3';
+                const nomJ4 = m.j4?.username || m.j4?.nombre_completo || 'J4';
+
+                contenedor.innerHTML += `
+                <div class="mesa-card-vivo">
+                    <div class="mesa-live-header">
+                        <div class="mesa-live-title">
+                            <span class="mesa-live-icon" aria-hidden="true">🁣</span>
+                            <div>
+                                <strong>Mesa #${i + 1}</strong>
+                                <span>Meta: ${limitePuntos} puntos</span>
+                            </div>
+                        </div>
+                        <div class="rondas-pill">
+                            <span>Rondas</span>
+                            <strong>${rondas}</strong>
+                        </div>
+                    </div>
+
+                    <div class="marcador-grid">
+                        <div class="equipo-score-box team-a">
+                            <div class="equipo-score-label" style="color: var(--cyan-title);">Equipo A</div>
+                            <div class="equipo-score-names">${nomJ1} & ${nomJ3}</div>
+                            <div class="score-a">${totalP1}</div>
+                        </div>
+                        <div class="equipo-score-box team-b">
+                            <div class="equipo-score-label" style="color: var(--accent-red);">Equipo B</div>
+                            <div class="equipo-score-names">${nomJ2} & ${nomJ4}</div>
+                            <div class="score-b">${totalP2}</div>
+                        </div>
+                    </div>
+
+                    <div>
+                        <div class="mesa-progress-label">
+                            <span>Progreso hacia la meta</span>
+                            <span>${progreso}%</span>
+                        </div>
+                        <div class="progress-track">
+                            <div class="progress-fill" style="width: ${progreso}%;"></div>
+                        </div>
+                    </div>
+
+                    <button class="btn mesa-enter-btn" onclick="window.location.href='mesa.html?id=${m.id}'"><span>Entrar a la Mesa</span><span class="mesa-enter-arrow" aria-hidden="true">→</span></button>
+                </div>
+                `;
+            });
+        }
+    async function cerrarSesion() {
+        await window.AppNotifications?.desactivarPushCelular?.();
+        await supabase.auth.signOut();
+        localStorage.removeItem('modo_invitado');
+        window.location.replace('login.html');
+    }
+
+    window.addEventListener('DOMContentLoaded', async () => {
+        Router.init();
+        inicializarClasificatoriaCompacta();
+
+        // Pintar primero la última información disponible de caché.
+        // Se hace aquí porque el DOM ya está construido.
+        restaurarEstadoFiltrosClasificatoria();
+        hidratarDesdeCacheInstantaneo();
+
+        // Hidratar la tabla guardada una sola vez para evitar que la clasificación
+        // salte mientras llegan los datos frescos.
+        if (!cacheClasificatoriaHidratada) {
+            cacheClasificatoriaHidratada = hidratarTablaClasificatoriaDesdeCache();
+        }
+
+        await verificarSesion();
+        if (navigator.onLine === false) return;
+        await Promise.allSettled([cargarMesasActivas(), inicializarDatosClasificatoria(), cargarTorneoActivoLobby()]);
+        supabase.channel('cambios-en-vivo-general')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'manos' }, () => {
+                programarActualizacionClasificatoria();
+                cargarMesasActivas();
+            })
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'mesas' }, () => {
+                programarActualizacionClasificatoria();
+                cargarMesasActivas();
+            })
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'torneos_v2' }, () => {
+                cargarTorneoActivoLobby();
+            })
+            .subscribe();
+
+        // Respaldo de Realtime: una comprobación moderada mantiene la pantalla al
+        // día si se pierde un evento sin consultar la base de datos cada 3 segundos.
+        clearInterval(intervaloMesasEnVivo);
+        intervaloMesasEnVivo = setInterval(() => {
+            if (document.visibilityState === 'visible') {
+                cargarMesasActivas();
+            }
+        }, 15000);
+
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible') {
+                cargarMesasActivas();
+                inicializarDatosClasificatoria(true);
+            }
+        });
+    });
+
+    window.addEventListener('online', async () => {
+        await cargarMesasActivas();
+        await inicializarDatosClasificatoria(true);
+    });
+    window.addEventListener('storage', (event) => {
+        if (event.key === 'cache_mesas_activas') {
+            const c=document.getElementById('lista-mesas'); try { const m=JSON.parse(event.newValue); if(c&&Array.isArray(m)){renderizarListaMesas(m,c); actualizarBadgingApp(m.length);} } catch(e){}
+        }
+        if (event.key === 'cache_index_general_datos') programarActualizacionClasificatoria();
+    });
+</script>
+<div id="lobby-toast" class="lobby-toast hidden" role="status" aria-live="polite"></div>
+</body>
+</html>
