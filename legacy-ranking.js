@@ -143,12 +143,13 @@
 
             const lista = filas.map(f => ({
                 jugador: f.jugador || 'Jugador',
+                rol: String(f.rol || '').toLowerCase(),
                 ganadas: Number(f.victorias) || 0,
                 perdidas: Number(f.derrotas) || 0,
                 partidas: Number(f.partidas) || 0,
                 eficiencia: Number(f.eficiencia) || 0
             }))
-            .filter(x => x.partidas >= meta)
+            .filter(x => x.rol !== 'invitado' && x.partidas >= meta)
             .sort((a, b) =>
                 b.eficiencia - a.eficiencia ||
                 b.ganadas - a.ganadas ||
