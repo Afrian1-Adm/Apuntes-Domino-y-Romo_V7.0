@@ -5,38 +5,38 @@
     'use strict';
 
     const SUPABASE_URL_LEGACY = 'https://kzbslfwupzwczmjqfjem.supabase.co';
-    const SUPABASE_ANON_KEY_LEGACY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJIUzI1NiIsInJlZiI6Imt6YnNsZnd1cHp3Y3ptanFmamVtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODcxNDI1MzksImV4cCI6MjEwMjcxODUzOX0.qeeh2FV3zKRet-jRMVvJUwBm9jYHsLbWSYWIao574qc';
-    const RPC_LEGACY = 'obtener_clasificacion_general_con_legacy';
+    const SUPABASE_ANON_KEY_LEGACY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt6YnNsZnd1cHp3Y3ptanFmamVtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODcxNDI1MzksImV4cCI6MjEwMjcxODUzOX0.qeeh2FV3zKRet-jRMVvJUwBm9jYHsLbWSYWIao574qc';
+    const RPC = 'obtener_clasificacion_general_con_legacy';
+
+    let clienteFallback = null;
     let secuenciaTabla = 0;
-    let temporizadorTabla = null;
-    let topAnualEnCurso = false;
+    let timerTabla = null;
+    let topEnCurso = false;
 
-    async function consultarClasificacion(desde = null, hasta = null) {
-        if (navigator.onLine === false) return null;
-
-        const respuesta = await fetch(`${SUPABASE_URL_LEGACY}/rest/v1/rpc/${RPC_LEGACY}`, {
-            method: 'POST',
-            headers: {
-                apikey: SUPABASE_ANON_KEY_LEGACY,
-                Authorization: `Bearer ${SUPABASE_ANON_KEY_LEGACY}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                p_desde: desde || null,
-                p_hasta: hasta || null
-            })
-        });
-
-        if (!respuesta.ok) {
-            const detalle = await respuesta.text().catch(() => '');
-            throw new Error(`Historial legado no disponible (${respuesta.status}) ${detalle}`.trim());
+    function clienteSupabase() {
+        if (window.supabaseClient && typeof window.supabaseClient.rpc === 'function') {
+            return window.supabaseClient;
         }
-
-        const datos = await respuesta.json();
-        return Array.isArray(datos) ? datos : [];
+        if (!clienteFallback && window.supabase && typeof window.supabase.createClient === 'function') {
+            clienteFallback = window.supabase.createClient(SUPABASE_URL_LEGACY, SUPABASE_ANON_KEY_LEGACY);
+        }
+        return clienteFallback;
     }
 
-    function escaparHtml(valor) {
+    async function consultar(desde = null, hasta = null) {
+        if (navigator.onLine === false) return null;
+        const db = clienteSupabase();
+        if (!db) throw new Error('Supabase JS no está disponible.');
+
+        const { data, error } = await db.rpc(RPC, {
+            p_desde: desde || null,
+            p_hasta: hasta || null
+        });
+        if (error) throw error;
+        return Array.isArray(data) ? data : [];
+    }
+
+    function esc(valor) {
         return String(valor ?? '')
             .replace(/&/g, '&amp;')
             .replace(/</g, '&lt;')
@@ -45,52 +45,45 @@
             .replace(/'/g, '&#039;');
     }
 
-    function ordenarClasificacion(lista) {
+    function ordenar(lista) {
         return lista.sort((a, b) =>
-            Number(b.eficiencia || 0) - Number(a.eficiencia || 0) ||
-            Number(b.total || b.partidas || 0) - Number(a.total || a.partidas || 0) ||
-            Number(b.vic || b.victorias || 0) - Number(a.vic || a.victorias || 0) ||
-            String(a.jugador || '').localeCompare(String(b.jugador || ''), 'es', { sensitivity: 'base' })
+            b.eficiencia - a.eficiencia ||
+            b.total - a.total ||
+            b.vic - a.vic ||
+            String(a.jugador).localeCompare(String(b.jugador), 'es', { sensitivity: 'base' })
         );
     }
 
-    async function renderizarTablaGeneralLegacy() {
+    async function renderTablaGeneral() {
         const tbody = document.getElementById('cuerpo-tabla-clasificatoria');
         if (!tbody) return;
 
         const solicitud = ++secuenciaTabla;
         const desde = document.getElementById('filtro-desde')?.value || null;
         const hasta = document.getElementById('filtro-hasta')?.value || null;
-        const minPartidas = Number.parseInt(document.getElementById('filtro-min-partidas')?.value || '0', 10) || 0;
-        const tipoJugador = document.getElementById('filtro-tipo-jugador')?.value || '';
-        const busqueda = (document.getElementById('filtro-buscar-jugador')?.value || '').trim().toLowerCase();
+        const min = parseInt(document.getElementById('filtro-min-partidas')?.value || '0', 10) || 0;
+        const tipo = document.getElementById('filtro-tipo-jugador')?.value || '';
+        const texto = (document.getElementById('filtro-buscar-jugador')?.value || '').trim().toLowerCase();
 
         try {
-            const filas = await consultarClasificacion(desde, hasta);
+            const filas = await consultar(desde, hasta);
             if (!filas || solicitud !== secuenciaTabla) return;
 
-            let lista = filas.map(fila => ({
-                id: fila.perfil_id,
-                jugador: fila.jugador || 'Jugador',
-                rol: String(fila.rol || '').toLowerCase(),
-                estado: fila.estado,
-                vic: Number(fila.victorias) || 0,
-                der: Number(fila.derrotas) || 0,
-                total: Number(fila.partidas) || 0,
-                eficiencia: Number(fila.eficiencia) || 0,
-                partidasLegacy: Number(fila.partidas_legacy) || 0
+            let lista = filas.map(f => ({
+                id: f.perfil_id,
+                jugador: f.jugador || 'Jugador',
+                rol: String(f.rol || '').toLowerCase(),
+                vic: Number(f.victorias) || 0,
+                der: Number(f.derrotas) || 0,
+                total: Number(f.partidas) || 0,
+                eficiencia: Number(f.eficiencia) || 0
             }));
 
-            if (tipoJugador === 'miembros') {
-                lista = lista.filter(item => item.rol !== 'invitado');
-            } else if (tipoJugador === 'invitados') {
-                lista = lista.filter(item => item.rol === 'invitado');
-            }
-
-            if (minPartidas > 0) lista = lista.filter(item => item.total >= minPartidas);
-            if (busqueda) lista = lista.filter(item => item.jugador.toLowerCase().includes(busqueda));
-
-            ordenarClasificacion(lista);
+            if (tipo === 'miembros') lista = lista.filter(x => x.rol !== 'invitado');
+            if (tipo === 'invitados') lista = lista.filter(x => x.rol === 'invitado');
+            if (min > 0) lista = lista.filter(x => x.total >= min);
+            if (texto) lista = lista.filter(x => x.jugador.toLowerCase().includes(texto));
+            ordenar(lista);
 
             if (typeof window.actualizarMarcadoresJugadorLobby === 'function') {
                 window.actualizarMarcadoresJugadorLobby(lista);
@@ -100,160 +93,137 @@
             }
 
             if (!lista.length) {
-                const vacio = '<tr><td colspan="6" style="text-align: center; color: var(--text-muted); padding: 12px 0;">No hay registros de partidas completadas que coincidan con los filtros.</td></tr>';
-                tbody.innerHTML = vacio;
-                if (typeof window.guardarCacheTablaClasificatoria === 'function') {
-                    window.guardarCacheTablaClasificatoria(vacio, 0);
-                }
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:12px 0;">No hay registros de partidas completadas que coincidan con los filtros.</td></tr>';
                 return;
             }
 
-            const html = lista.map((item, indice) => {
-                const ef = Number(item.eficiencia || 0).toFixed(1);
-                return `
-                    <tr>
-                        <td style="text-align: center; font-weight: bold; color: var(--cyan-title);">${indice + 1}°</td>
-                        <td style="font-weight: bold;">${escaparHtml(item.jugador)}</td>
-                        <td style="text-align: center; color: var(--accent-green); font-weight: bold;">${item.vic}</td>
-                        <td style="text-align: center; color: var(--accent-red);">${item.der}</td>
-                        <td style="text-align: center;">${item.total}</td>
-                        <td>
-                            <div class="progress-container">
-                                <div class="progress-bar-bg">
-                                    <div class="progress-bar-fill" style="width: ${Math.max(0, Math.min(100, Number(ef)))}%;"></div>
-                                </div>
-                                <span class="eficiencia-txt">${ef}%</span>
-                            </div>
-                        </td>
-                    </tr>`;
+            tbody.innerHTML = lista.map((x, i) => {
+                const ef = x.eficiencia.toFixed(1);
+                return `<tr>
+                    <td style="text-align:center;font-weight:bold;color:var(--cyan-title);">${i + 1}°</td>
+                    <td style="font-weight:bold;">${esc(x.jugador)}</td>
+                    <td style="text-align:center;color:var(--accent-green);font-weight:bold;">${x.vic}</td>
+                    <td style="text-align:center;color:var(--accent-red);">${x.der}</td>
+                    <td style="text-align:center;">${x.total}</td>
+                    <td><div class="progress-container">
+                        <div class="progress-bar-bg"><div class="progress-bar-fill" style="width:${Math.max(0, Math.min(100, x.eficiencia))}%;"></div></div>
+                        <span class="eficiencia-txt">${ef}%</span>
+                    </div></td>
+                </tr>`;
             }).join('');
-
-            tbody.innerHTML = html;
-            if (typeof window.guardarCacheTablaClasificatoria === 'function') {
-                window.guardarCacheTablaClasificatoria(html, lista.length);
-            }
         } catch (error) {
-            console.warn('[HISTORIAL LEGADO] Tabla General mantiene el cálculo nuevo como respaldo:', error);
+            console.error('[HISTORIAL LEGADO] Error Tabla General:', error);
         }
     }
 
-    function programarTablaGeneralLegacy() {
-        window.clearTimeout(temporizadorTabla);
-        temporizadorTabla = window.setTimeout(renderizarTablaGeneralLegacy, 80);
+    function programarTabla() {
+        clearTimeout(timerTabla);
+        timerTabla = setTimeout(renderTablaGeneral, 80);
     }
 
-    function semanaControlAnual(fecha) {
-        const anio = fecha.getFullYear();
-        const dia = Math.floor(
-            (Date.UTC(anio, fecha.getMonth(), fecha.getDate()) - Date.UTC(anio, 0, 1)) / 86400000
-        ) + 1;
+    function semanaActual(fecha) {
+        const y = fecha.getFullYear();
+        const dia = Math.floor((Date.UTC(y, fecha.getMonth(), fecha.getDate()) - Date.UTC(y, 0, 1)) / 86400000) + 1;
         return Math.min(52, Math.max(1, Math.floor((dia - 1) / 7) + 1));
     }
 
-    async function renderizarTopAnualLegacy() {
+    async function renderTopAnual() {
         const tbody = document.getElementById('cuerpo-ranking-anual');
-        if (!tbody || topAnualEnCurso) return;
+        if (!tbody || topEnCurso) return;
+        topEnCurso = true;
 
-        topAnualEnCurso = true;
         try {
-            const ahora = new Date();
-            const anio = ahora.getFullYear();
-            const desde = `${anio}-01-01`;
-            const hasta = `${anio}-12-31`;
-            const filas = await consultarClasificacion(desde, hasta);
+            const hoy = new Date();
+            const anio = hoy.getFullYear();
+            const semana = semanaActual(hoy);
+            const metaAnual = 360;
+            const meta = Math.ceil((metaAnual * semana) / 52);
+            const filas = await consultar(`${anio}-01-01`, `${anio}-12-31`);
             if (!filas) return;
 
-            const META_ANUAL = 360;
-            const semana = semanaControlAnual(ahora);
-            const metaHastaSemana = Math.ceil((META_ANUAL * semana) / 52);
-
-            const lista = filas
-                .map(fila => ({
-                    id: fila.perfil_id,
-                    jugador: fila.jugador || 'Jugador',
-                    ganadas: Number(fila.victorias) || 0,
-                    perdidas: Number(fila.derrotas) || 0,
-                    partidas: Number(fila.partidas) || 0,
-                    eficiencia: Number(fila.eficiencia) || 0
-                }))
-                .filter(item => item.partidas >= metaHastaSemana)
-                .sort((a, b) =>
-                    b.eficiencia - a.eficiencia ||
-                    b.ganadas - a.ganadas ||
-                    b.partidas - a.partidas ||
-                    String(a.jugador).localeCompare(String(b.jugador), 'es', { sensitivity: 'base' })
-                );
+            const lista = filas.map(f => ({
+                jugador: f.jugador || 'Jugador',
+                ganadas: Number(f.victorias) || 0,
+                perdidas: Number(f.derrotas) || 0,
+                partidas: Number(f.partidas) || 0,
+                eficiencia: Number(f.eficiencia) || 0
+            }))
+            .filter(x => x.partidas >= meta)
+            .sort((a, b) =>
+                b.eficiencia - a.eficiencia ||
+                b.ganadas - a.ganadas ||
+                b.partidas - a.partidas ||
+                String(a.jugador).localeCompare(String(b.jugador), 'es', { sensitivity: 'base' })
+            );
 
             const yearEl = document.getElementById('top-anual-year');
             const semanaEl = document.getElementById('top-anual-semana');
             const metaEl = document.getElementById('top-anual-meta-semanal');
             if (yearEl) yearEl.textContent = String(anio);
             if (semanaEl) semanaEl.textContent = `${semana} de 52`;
-            if (metaEl) metaEl.textContent = `${metaHastaSemana} partidas`;
+            if (metaEl) metaEl.textContent = `${meta} partidas`;
 
             if (!lista.length) {
-                tbody.innerHTML = `<tr><td colspan="4" style="text-align: center; color: var(--text-muted); padding: 12px 0;">Aún ningún jugador alcanza las ${metaHastaSemana} partidas requeridas en la semana ${semana}.</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:12px 0;">Aún ningún jugador alcanza las ${meta} partidas requeridas en la semana ${semana}.</td></tr>`;
                 return;
             }
 
-            tbody.innerHTML = lista.slice(0, 10).map((item, indice) => {
-                const badgeClass = indice === 0 ? 'badge-oro' : indice === 1 ? 'badge-plata' : indice === 2 ? 'badge-bronce' : '';
-                return `
-                    <tr>
-                        <td style="text-align: center;" class="${badgeClass}">${indice + 1}°</td>
-                        <td>
-                            <span class="annual-player-name">${escaparHtml(item.jugador)}</span>
-                            <span class="annual-record">${item.ganadas}V · ${item.perdidas}D</span>
-                        </td>
-                        <td style="text-align: center; font-weight: 850; color: var(--accent-blue);">${item.partidas} / ${META_ANUAL}</td>
-                        <td style="text-align: center; font-weight: 900; color: var(--accent-green);">${item.eficiencia.toFixed(1)}%</td>
-                    </tr>`;
+            tbody.innerHTML = lista.slice(0, 10).map((x, i) => {
+                const badge = i === 0 ? 'badge-oro' : i === 1 ? 'badge-plata' : i === 2 ? 'badge-bronce' : '';
+                return `<tr>
+                    <td style="text-align:center;" class="${badge}">${i + 1}°</td>
+                    <td><span class="annual-player-name">${esc(x.jugador)}</span><span class="annual-record">${x.ganadas}V · ${x.perdidas}D</span></td>
+                    <td style="text-align:center;font-weight:850;color:var(--accent-blue);">${x.partidas} / ${metaAnual}</td>
+                    <td style="text-align:center;font-weight:900;color:var(--accent-green);">${x.eficiencia.toFixed(1)}%</td>
+                </tr>`;
             }).join('');
         } catch (error) {
-            console.warn('[HISTORIAL LEGADO] Top Anual mantiene el cálculo nuevo como respaldo:', error);
+            console.error('[HISTORIAL LEGADO] Error Top Anual:', error);
         } finally {
-            topAnualEnCurso = false;
+            topEnCurso = false;
         }
     }
 
-    function instalarIntegracionLegacy() {
-        const tieneTablaGeneral = Boolean(document.getElementById('cuerpo-tabla-clasificatoria'));
-        const tieneTopAnual = Boolean(document.getElementById('cuerpo-ranking-anual'));
+    function instalar() {
+        const tabla = document.getElementById('cuerpo-tabla-clasificatoria');
+        if (tabla) {
+            ['filtro-desde', 'filtro-hasta', 'filtro-min-partidas', 'filtro-tipo-jugador', 'filtro-buscar-jugador']
+                .forEach(id => {
+                    const el = document.getElementById(id);
+                    if (!el || el.dataset.legacyListener === '1') return;
+                    el.dataset.legacyListener = '1';
+                    el.addEventListener('input', programarTabla);
+                    el.addEventListener('change', programarTabla);
+                });
 
-        if (tieneTablaGeneral) {
             const original = window.aplicarFiltrosClasificatoria;
             if (typeof original === 'function' && !original.__legacyIntegrado) {
                 const envuelta = function (...args) {
-                    const resultado = original.apply(this, args);
-                    programarTablaGeneralLegacy();
-                    return resultado;
+                    const r = original.apply(this, args);
+                    programarTabla();
+                    return r;
                 };
                 envuelta.__legacyIntegrado = true;
                 window.aplicarFiltrosClasificatoria = envuelta;
             }
-            programarTablaGeneralLegacy();
+            programarTabla();
         }
 
-        if (tieneTopAnual) {
+        if (document.getElementById('cuerpo-ranking-anual')) {
             const original = window.procesarYRenderizarGalardones;
             if (typeof original === 'function' && !original.__legacyIntegrado) {
                 const envuelta = function (...args) {
-                    const resultado = original.apply(this, args);
-                    window.setTimeout(renderizarTopAnualLegacy, 0);
-                    return resultado;
+                    const r = original.apply(this, args);
+                    setTimeout(renderTopAnual, 0);
+                    return r;
                 };
                 envuelta.__legacyIntegrado = true;
                 window.procesarYRenderizarGalardones = envuelta;
             }
-            window.setTimeout(renderizarTopAnualLegacy, 100);
+            setTimeout(renderTopAnual, 100);
         }
     }
 
-    if (document.readyState === 'complete') {
-        window.setTimeout(instalarIntegracionLegacy, 0);
-    } else {
-        window.addEventListener('load', () => {
-            window.setTimeout(instalarIntegracionLegacy, 0);
-        }, { once: true });
-    }
+    if (document.readyState === 'complete') setTimeout(instalar, 0);
+    else window.addEventListener('load', () => setTimeout(instalar, 0), { once: true });
 })();
