@@ -249,7 +249,11 @@
         }
     }
 
-    window.addEventListener('load', () => {
+    if (document.readyState === 'complete') {
         window.setTimeout(instalarIntegracionLegacy, 0);
-    });
+    } else {
+        window.addEventListener('load', () => {
+            window.setTimeout(instalarIntegracionLegacy, 0);
+        }, { once: true });
+    }
 })();
