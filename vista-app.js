@@ -438,7 +438,7 @@
 (function () {
     if (document.querySelector('script[data-legacy-ranking]')) return;
     const script = document.createElement('script');
-    script.src = 'legacy-ranking.js?v=20260917-1';
+    script.src = 'legacy-ranking.js?v=20260917-2';
     script.defer = true;
     script.dataset.legacyRanking = 'true';
     (document.head || document.documentElement).appendChild(script);
