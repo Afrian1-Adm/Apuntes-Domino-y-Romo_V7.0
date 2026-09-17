@@ -208,7 +208,7 @@
     function alternar() {
         if (!permiteVistaEscritorio()) return;
 
-        guardarModo(obtenerModo() === 'desktop' ? 'desktop' : 'mobile');
+        guardarModo(obtenerModo() === 'desktop' ? 'mobile' : 'desktop');
         aplicar();
         window.requestAnimationFrame(aplicar);
         window.dispatchEvent(new CustomEvent('appviewchange', { detail: { mode: obtenerModo() } }));
