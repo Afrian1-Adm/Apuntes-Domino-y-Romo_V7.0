@@ -208,7 +208,7 @@
     function alternar() {
         if (!permiteVistaEscritorio()) return;
 
-        guardarModo(obtenerModo() === 'desktop' ? 'mobile' : 'desktop');
+        guardarModo(obtenerModo() === 'desktop' ? 'desktop' : 'mobile');
         aplicar();
         window.requestAnimationFrame(aplicar);
         window.dispatchEvent(new CustomEvent('appviewchange', { detail: { mode: obtenerModo() } }));
@@ -432,4 +432,14 @@
     window.addEventListener('load', aplicar);
     window.addEventListener('resize', aplicar);
     window.addEventListener('orientationchange', aplicar);
+})();
+
+// Carga aislada del historial anterior solo para Tabla General y Top Anual.
+(function () {
+    if (document.querySelector('script[data-legacy-ranking]')) return;
+    const script = document.createElement('script');
+    script.src = 'legacy-ranking.js?v=20260917-1';
+    script.defer = true;
+    script.dataset.legacyRanking = 'true';
+    (document.head || document.documentElement).appendChild(script);
 })();
