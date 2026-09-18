@@ -1830,12 +1830,47 @@
             return;
         }
 
+        const nombreNuevo = inputNombre.value.trim();
+        const usernameNuevo = inputUsername.value.trim();
+
+        const { data: aliasDisponible, error: aliasError } = await sbClient.rpc(
+            'username_disponible',
+            { p_username: usernameNuevo }
+        );
+
+        if (aliasError) {
+            console.error('No se pudo comprobar el alias:', aliasError);
+            mostrarError('No se pudo comprobar si el alias está disponible. Inténtalo nuevamente.');
+            return;
+        }
+
+        if (aliasDisponible !== true) {
+            const existente = todosLosUsuarios.find(u =>
+                String(u.username || '').trim().toLowerCase() === usernameNuevo.toLowerCase()
+            );
+
+            if (existente?.es_manual === true && !existente?.auth_user_id) {
+                const codigoExistente = codigosVinculacionPorPerfil.get(existente.id)?.codigo || '';
+                const mensaje = codigoExistente
+                    ? `Ese perfil ya existe como perfil manual. No debes crearlo otra vez.\n\nCódigo de vinculación: ${codigoExistente}`
+                    : 'Ese perfil ya existe como perfil manual. No debes crearlo otra vez.';
+                mostrarError(mensaje);
+                alert(mensaje);
+            } else {
+                const mensaje = 'Ese alias ya está en uso. Elige otro nombre de usuario.';
+                mostrarError(mensaje);
+                alert(mensaje);
+            }
+            inputUsername.focus();
+            return;
+        }
+
         const nuevoId = crypto.randomUUID();
 
         const { error } = await sbClient.from('perfiles').insert([{ 
             id: nuevoId,
-            nombre_completo: inputNombre.value.trim(), 
-            username: inputUsername.value.trim(),
+            nombre_completo: nombreNuevo, 
+            username: usernameNuevo,
             rol: rolSeleccionado,
             es_manual: true,
             estado: 'aprobado'
@@ -1843,7 +1878,12 @@
 
         if (error) {
             console.error('Error detallado de Supabase:', error);
-            mostrarError('Error al crear perfil: ' + error.message);
+            const duplicado = error.code === '23505' || /duplicate key|unique constraint/i.test(error.message || '');
+            mostrarError(
+                duplicado
+                    ? 'Ese alias ya está en uso. Elige otro nombre de usuario.'
+                    : 'No se pudo crear el perfil. Inténtalo nuevamente.'
+            );
         } else {
             inputNombre.value = '';
             inputUsername.value = '';
