@@ -828,18 +828,27 @@
                 >
             </div>
 <div class="field-group">
-                <label for="reg-codigo-vinculacion">Código de vinculación de jugador <span style="font-weight:400;">(opcional)</span></label>
-                <input
-                    type="text"
-                    id="reg-codigo-vinculacion"
-                    class="code-input"
-                    autocomplete="off"
-                    autocapitalize="characters"
-                    spellcheck="false"
-                    maxlength="9"
-                    placeholder="XXXX-XXXX"
-                >
-                <small class="field-hint">Si ya tienes un perfil manual, introduce aquí el código personal que te dio el administrador.</small>
+                <details id="perfil-admin-details">
+                    <summary style="cursor:pointer; font-weight:700;">
+                        ¿Ya tienes un perfil creado por el administrador?
+                    </summary>
+                    <div style="margin-top:12px;">
+                        <label for="reg-codigo-vinculacion">Código de vinculación</label>
+                        <input
+                            type="text"
+                            id="reg-codigo-vinculacion"
+                            class="code-input"
+                            autocomplete="off"
+                            autocapitalize="characters"
+                            spellcheck="false"
+                            maxlength="9"
+                            placeholder="XXXX-XXXX"
+                        >
+                        <small class="field-hint">
+                            Usa este código únicamente si el administrador ya había creado tu jugador. Si estás creando un perfil nuevo, no necesitas ningún código.
+                        </small>
+                    </div>
+                </details>
             </div>
             <div class="field-group">
                 <label for="reg-email">Correo electrónico</label>
@@ -1049,7 +1058,7 @@ const SUPABASE_URL = 'https://kzbslfwupzwczmjqfjem.supabase.co';
         document.getElementById('auth-title').textContent = esLogin ? 'Entra al club' : 'Crea tu cuenta';
         document.getElementById('auth-subtitle').textContent = esLogin
             ? 'Accede a tus partidas, estadísticas y torneos.'
-            : 'Elige tu alias y solicita acceso para comenzar a jugar.';
+            : 'Crea tu perfil con nombre, alias, correo y contraseña. No necesitas código.';
 
         if (borrarMensaje) limpiarMensaje();
     }
@@ -1083,6 +1092,16 @@ const SUPABASE_URL = 'https://kzbslfwupzwczmjqfjem.supabase.co';
         return limpio.length > 4
             ? `${limpio.slice(0, 4)}-${limpio.slice(4)}`
             : limpio;
+    }
+
+    const perfilAdminDetails = document.getElementById('perfil-admin-details');
+    if (perfilAdminDetails) {
+        perfilAdminDetails.addEventListener('toggle', () => {
+            if (!perfilAdminDetails.open) {
+                const codigoInput = document.getElementById('reg-codigo-vinculacion');
+                if (codigoInput) codigoInput.value = '';
+            }
+        });
     }
 
     ['reg-codigo-vinculacion'].forEach((id) => {
