@@ -1063,6 +1063,9 @@
                 .from('manos')
                 .select('*')
                 .eq('anulada', false)
+                // El historial debe reconstruirse en orden cronológico:
+                // la mano que alcanza la meta marca la hora real de cierre.
+                .order('created_at', { ascending: true })
                 .order('id', { ascending: true });
 
             if (error) {
