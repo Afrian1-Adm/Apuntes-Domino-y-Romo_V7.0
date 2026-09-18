@@ -1246,13 +1246,33 @@ const SUPABASE_URL = 'https://kzbslfwupzwczmjqfjem.supabase.co';
 
         const nombre = document.getElementById('reg-nombre').value.trim();
         const username = document.getElementById('reg-username').value.trim();
-        const codigoVinculacion = normalizarCodigoVinculacion(
-            document.getElementById('reg-codigo-vinculacion')?.value
-        );
+        const detallesVinculacion = document.getElementById('perfil-admin-details');
+        const codigoVinculacion = detallesVinculacion?.open
+            ? normalizarCodigoVinculacion(document.getElementById('reg-codigo-vinculacion')?.value)
+            : '';
         const email = document.getElementById('reg-email').value.trim();
         const password = document.getElementById('reg-password').value;
 
         try {
+
+            cambiarCargaBoton(boton, true, 'Comprobando alias…');
+
+            const { data: aliasDisponible, error: aliasError } = await supabase.rpc(
+                'username_disponible',
+                { p_username: username }
+            );
+
+            if (aliasError) {
+                console.error('No se pudo comprobar el alias:', aliasError);
+                mostrarMensaje('No pudimos comprobar si el alias está disponible. Inténtalo nuevamente.', 'error');
+                return;
+            }
+
+            if (aliasDisponible !== true) {
+                mostrarMensaje('Ese alias ya está en uso. Elige otro nombre de usuario para continuar.', 'error');
+                document.getElementById('reg-username')?.focus();
+                return;
+            }
 
             cambiarCargaBoton(boton, true, 'Creando cuenta…');
 
@@ -1273,7 +1293,12 @@ const SUPABASE_URL = 'https://kzbslfwupzwczmjqfjem.supabase.co';
                 if (detalle.includes('codigo_vinculacion_invalido')) {
                     mostrarMensaje('El código de vinculación no es válido o ya fue utilizado.', 'error');
                 } else if (detalle.includes('database error saving new user')) {
-                    mostrarMensaje('No se pudo crear la cuenta. Si usaste un código de vinculación, confirma que siga vigente.', 'error');
+                    mostrarMensaje(
+                        codigoVinculacion
+                            ? 'No se pudo vincular el perfil. Confirma que el código siga vigente y pertenezca a un perfil creado por el administrador.'
+                            : 'No se pudo crear el perfil en este momento. El alias ya fue validado; inténtalo nuevamente y, si persiste, avisa al administrador.',
+                        'error'
+                    );
                 } else {
                     mostrarMensaje(mensajeErrorAuth(error, 'No fue posible crear la cuenta.'), 'error');
                 }
