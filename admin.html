@@ -1352,7 +1352,13 @@
     }
 
     async function cargarHistorialCerradoAdmin() {
-        const { data, error } = await sbClient.from('manos').select('*').eq('anulada', false).order('id', { ascending: true });
+        const { data, error } = await sbClient
+            .from('manos')
+            .select('*')
+            .eq('anulada', false)
+            // Orden cronológico: la última mano de la partida representa su cierre.
+            .order('created_at', { ascending: true })
+            .order('id', { ascending: true });
         if (error) {
             document.getElementById('cuerpo-tabla-historial').innerHTML = `<tr><td colspan="9" style="text-align: center; color: var(--accent-red);">Error al cargar historial.</td></tr>`;
             return;
