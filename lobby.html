@@ -2370,19 +2370,16 @@
             const ahora = new Date(referencia);
             const inicio = new Date(ahora);
 
-            // La jugada semanal comienza cada jueves a las 8:00 p. m.
-            // Si todavía no ha llegado ese momento esta semana, usamos
-            // la jornada del jueves anterior para mantener el galardón visible.
+            // Misma ventana oficial usada en Galardones:
+            // jueves 8:00 a. m. hasta viernes 6:00 a. m.
             const diasDesdeJueves = (ahora.getDay() - 4 + 7) % 7;
             inicio.setDate(ahora.getDate() - diasDesdeJueves);
-            inicio.setHours(20, 0, 0, 0);
+            inicio.setHours(8, 0, 0, 0);
 
             if (ahora < inicio) {
                 inicio.setDate(inicio.getDate() - 7);
             }
 
-            // La misma jornada puede cruzar la medianoche y termina
-            // el viernes a las 6:00 a. m.
             const fin = new Date(inicio);
             fin.setDate(fin.getDate() + 1);
             fin.setHours(6, 0, 0, 0);
