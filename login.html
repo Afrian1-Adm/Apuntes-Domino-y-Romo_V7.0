@@ -1255,26 +1255,32 @@ const SUPABASE_URL = 'https://kzbslfwupzwczmjqfjem.supabase.co';
 
         try {
 
-            cambiarCargaBoton(boton, true, 'Comprobando alias…');
+            if (!codigoVinculacion) {
+                cambiarCargaBoton(boton, true, 'Comprobando alias…');
 
-            const { data: aliasDisponible, error: aliasError } = await supabase.rpc(
-                'username_disponible',
-                { p_username: username }
+                const { data: aliasDisponible, error: aliasError } = await supabase.rpc(
+                    'username_disponible',
+                    { p_username: username }
+                );
+
+                if (aliasError) {
+                    console.error('No se pudo comprobar el alias:', aliasError);
+                    mostrarMensaje('No pudimos comprobar si el alias está disponible. Inténtalo nuevamente.', 'error');
+                    return;
+                }
+
+                if (aliasDisponible !== true) {
+                    mostrarMensaje('Ese alias ya está en uso. Elige otro nombre de usuario para continuar.', 'error');
+                    document.getElementById('reg-username')?.focus();
+                    return;
+                }
+            }
+
+            cambiarCargaBoton(
+                boton,
+                true,
+                codigoVinculacion ? 'Vinculando perfil…' : 'Creando cuenta…'
             );
-
-            if (aliasError) {
-                console.error('No se pudo comprobar el alias:', aliasError);
-                mostrarMensaje('No pudimos comprobar si el alias está disponible. Inténtalo nuevamente.', 'error');
-                return;
-            }
-
-            if (aliasDisponible !== true) {
-                mostrarMensaje('Ese alias ya está en uso. Elige otro nombre de usuario para continuar.', 'error');
-                document.getElementById('reg-username')?.focus();
-                return;
-            }
-
-            cambiarCargaBoton(boton, true, 'Creando cuenta…');
 
             const { data, error } = await supabase.auth.signUp({
                 email,
@@ -1311,7 +1317,7 @@ const SUPABASE_URL = 'https://kzbslfwupzwczmjqfjem.supabase.co';
 
             if (codigoVinculacion) {
                 mostrarMensaje(
-                    'Cuenta creada y perfil existente vinculado correctamente. Si debes confirmar tu correo, hazlo antes de iniciar sesión.',
+                    'Cuenta creada y perfil del administrador vinculado correctamente. Se conservarán el jugador y su historial existentes. Si debes confirmar tu correo, hazlo antes de iniciar sesión.',
                     'success'
                 );
             } else {
