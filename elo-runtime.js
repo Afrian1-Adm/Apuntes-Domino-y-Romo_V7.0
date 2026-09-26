@@ -1,5 +1,5 @@
 // ============================================================
-// ELO — COMPATIBILIDAD DE CLIENTE
+// MESA — COMPATIBILIDAD CON AUTORIDAD DEL SERVIDOR
 // ============================================================
 (function () {
     'use strict';
@@ -10,6 +10,19 @@
     let intentos = 0;
     const MAX_INTENTOS = 80;
 
+    function respuestaDelegada(tipo, extra = {}) {
+        return Promise.resolve({
+            data: {
+                success: true,
+                delegated_to_server: true,
+                authority: 'postgres_triggers',
+                type: tipo,
+                ...extra
+            },
+            error: null
+        });
+    }
+
     function instalar() {
         const cliente = window.supabaseClient;
         if (!cliente || typeof cliente.rpc !== 'function') {
@@ -17,27 +30,36 @@
             return;
         }
 
-        if (cliente.rpc.__eloGestionadoPorServidor) return;
+        if (cliente.rpc.__dominoAutoridadServidor) return;
 
         const rpcOriginal = cliente.rpc.bind(cliente);
         const rpcSeguro = function (nombre, args, opciones) {
-            // Desde ELO v2 el navegador no reconstruye el ranking global.
-            // PostgreSQL lo hace de forma transaccional mediante el trigger
-            // de la mano decisiva. Este retorno conserva compatibilidad con
-            // versiones de mesa.html que todavía intentan llamar al RPC.
+            // ELO v2: PostgreSQL reconstruye el ranking al guardar la mano
+            // decisiva. El navegador nunca debe ejecutar el recálculo global.
             if (nombre === 'recalcular_elo') {
-                return Promise.resolve({
-                    data: {
-                        success: true,
-                        version: 'elo_v2_canonico',
-                        delegated_to_server: true
-                    },
-                    error: null
+                return respuestaDelegada('elo', {
+                    version: 'elo_v2_canonico'
                 });
             }
+
+            // Torneos V2 y el módulo heredado Equipo A/B ya tienen triggers
+            // sincronizados sobre manos/mesas. Las llamadas antiguas de
+            // mesa.html son únicamente respaldos históricos y no deben volver
+            // a ejecutar lógica de cierre desde el cliente.
+            if (nombre === 'torneo_v2_procesar_mesa') {
+                return respuestaDelegada('torneo_v2', {
+                    es_torneo: true
+                });
+            }
+
+            if (nombre === 'procesar_mesa_equipo_ab') {
+                return respuestaDelegada('torneo_equipo_ab');
+            }
+
             return rpcOriginal(nombre, args, opciones);
         };
 
+        rpcSeguro.__dominoAutoridadServidor = true;
         rpcSeguro.__eloGestionadoPorServidor = true;
         cliente.rpc = rpcSeguro;
     }
