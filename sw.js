@@ -1,5 +1,5 @@
-const CORE_CACHE = 'club-domino-core-v85';
-const RUNTIME_CACHE = 'club-domino-runtime-v85';
+const CORE_CACHE = 'club-domino-core-v86';
+const RUNTIME_CACHE = 'club-domino-runtime-v86';
 
 const SUPABASE_SDK_URL = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';
 
@@ -26,6 +26,7 @@ const CORE_ASSETS = [
     './legacy-ranking.js',
     './statistics-integrity.js',
     './elo-runtime.js',
+    './mesa-realtime-runtime.js',
     './summary-stats-runtime.js',
     './admin-summary-runtime.js',
     './icon-192.png',
@@ -248,12 +249,19 @@ async function inyectarRuntimeMesa(response, url) {
     if (!contentType.includes('text/html')) return response;
 
     const html = await response.clone().text();
-    if (html.includes('elo-runtime.js')) return response;
+    const etiquetas = [];
+    if (!html.includes('elo-runtime.js')) {
+        etiquetas.push('<script src="./elo-runtime.js?v=86"></script>');
+    }
+    if (!html.includes('mesa-realtime-runtime.js')) {
+        etiquetas.push('<script src="./mesa-realtime-runtime.js?v=86"></script>');
+    }
+    if (!etiquetas.length) return response;
 
-    const etiqueta = '<script src="./elo-runtime.js?v=85"></script>';
+    const bloque = etiquetas.join('\n    ');
     const htmlFinal = html.includes('</head>')
-        ? html.replace('</head>', `    ${etiqueta}\n</head>`)
-        : `${etiqueta}\n${html}`;
+        ? html.replace('</head>', `    ${bloque}\n</head>`)
+        : `${bloque}\n${html}`;
 
     const headers = new Headers(response.headers);
     headers.delete('content-length');
@@ -280,7 +288,7 @@ async function inyectarRuntimeResumen(response, url) {
     const html = await response.clone().text();
     if (html.includes('summary-stats-runtime.js')) return response;
 
-    const etiqueta = '<script src="./summary-stats-runtime.js?v=85"></script>';
+    const etiqueta = '<script src="./summary-stats-runtime.js?v=86"></script>';
     const htmlFinal = html.includes('</head>')
         ? html.replace('</head>', `    ${etiqueta}\n</head>`)
         : `${etiqueta}\n${html}`;
@@ -306,7 +314,7 @@ async function inyectarRuntimeAdmin(response, url) {
     const html = await response.clone().text();
     if (html.includes('admin-summary-runtime.js')) return response;
 
-    const etiqueta = '<script src="./admin-summary-runtime.js?v=85"></script>';
+    const etiqueta = '<script src="./admin-summary-runtime.js?v=86"></script>';
     const htmlFinal = html.includes('</head>')
         ? html.replace('</head>', `    ${etiqueta}\n</head>`)
         : `${etiqueta}\n${html}`;
