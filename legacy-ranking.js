@@ -228,3 +228,16 @@
     if (document.readyState === 'complete') setTimeout(instalar, 0);
     else window.addEventListener('load', () => setTimeout(instalar, 0), { once: true });
 })();
+
+// Las reglas compartidas se cargan desde aquí porque vista-app.js ya inserta
+// este archivo en todas las pantallas. Se mantiene el historial legado aislado:
+// statistics-integrity.js no mezcla datos legacy con otros galardones.
+(function () {
+    if (window.DominoStatsIntegrity) return;
+    if (document.querySelector('script[data-statistics-integrity]')) return;
+    const script = document.createElement('script');
+    script.src = 'statistics-integrity.js?v=20260926-1';
+    script.async = false;
+    script.dataset.statisticsIntegrity = 'true';
+    (document.head || document.documentElement).appendChild(script);
+})();
