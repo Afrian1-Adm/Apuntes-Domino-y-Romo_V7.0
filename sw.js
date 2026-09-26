@@ -1,5 +1,5 @@
-const CORE_CACHE = 'club-domino-core-v79';
-const RUNTIME_CACHE = 'club-domino-runtime-v79';
+const CORE_CACHE = 'club-domino-core-v80';
+const RUNTIME_CACHE = 'club-domino-runtime-v80';
 
 const SUPABASE_SDK_URL = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';
 
@@ -25,6 +25,7 @@ const CORE_ASSETS = [
     './app-notifications.js',
     './legacy-ranking.js',
     './statistics-integrity.js',
+    './elo-runtime.js',
     './icon-192.png',
     './icon-512.png'
 ];
