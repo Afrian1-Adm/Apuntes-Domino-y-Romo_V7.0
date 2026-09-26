@@ -36,3 +36,20 @@ async function cargarConCache(cacheKey, fetchFunction, renderFunction) {
         console.error(`Error actualizando segundo plano [${cacheKey}]:`, err);
     }
 }
+
+// ============================================================
+// INTEGRACIÓN DEL HISTORIAL LEGADO
+// Solo debe intervenir en la Tabla General (Lobby) y el Top Anual
+// (Galardones). El resto de estadísticas sigue usando únicamente
+// las partidas registradas por la app nueva.
+// ============================================================
+(function cargarIntegracionRankingLegado() {
+    const pagina = (location.pathname.split('/').pop() || '').toLowerCase();
+    if (!['lobby.html', 'galardones.html'].includes(pagina)) return;
+    if (document.querySelector('script[data-legacy-ranking="true"]')) return;
+
+    const script = document.createElement('script');
+    script.src = 'legacy-ranking.js';
+    script.dataset.legacyRanking = 'true';
+    document.head.appendChild(script);
+})();
