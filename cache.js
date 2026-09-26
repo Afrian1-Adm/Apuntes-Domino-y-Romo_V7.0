@@ -272,6 +272,135 @@ async function cargarConCache(cacheKey, fetchFunction, renderFunction) {
 })();
 
 // ============================================================
+// CONSULTAS — PARTIDAS RESUMIDAS EN EL SERVIDOR
+// ============================================================
+(function instalarConsultasDesdeResumenServidor() {
+    const pagina = (location.pathname.split('/').pop() || '').toLowerCase();
+    if (pagina !== 'consultas.html') return;
+
+    function convertirResumenAPartida(resumen) {
+        const fecha = resumen?.fecha_final || resumen?.mesa_created_at || null;
+        const t1 = [resumen?.jugador1_id, resumen?.jugador3_id].filter(Boolean);
+        const t2 = [resumen?.jugador2_id, resumen?.jugador4_id].filter(Boolean);
+        if (t1.length !== 2 || t2.length !== 2 || new Set([...t1, ...t2]).size !== 4) return null;
+
+        return {
+            mesaId: resumen.mesa_id,
+            timestamp: fecha ? new Date(fecha).getTime() : 0,
+            fecha_hora: fecha,
+            t1,
+            t2,
+            pts1: Number(resumen.puntos_pareja1 || 0),
+            pts2: Number(resumen.puntos_pareja2 || 0),
+            ganador: Number(resumen.ganador || 0),
+            esLisa: resumen.es_lisa === true,
+            clutchWinnerTeam: Number(resumen.clutch_winner_team || 0)
+        };
+    }
+
+    function instalar() {
+        const originalDatos = typeof window.obtenerDatosConsultas === 'function'
+            ? window.obtenerDatosConsultas
+            : null;
+        const originalAplicar = typeof window.aplicarDatosConsultas === 'function'
+            ? window.aplicarDatosConsultas
+            : null;
+        const originalAgrupar = typeof window.obtenerPartidasAgrupadas === 'function'
+            ? window.obtenerPartidasAgrupadas
+            : null;
+
+        if (!originalDatos || !originalAplicar || !originalAgrupar) return;
+        if (originalDatos.__resumenServidor) return;
+
+        const cliente = window.supabaseClient;
+        if (!cliente) return;
+
+        const obtenerDatosResumidos = async function () {
+            const [perfilesRes, partidasRes] = await Promise.all([
+                cliente.from('perfiles').select('*'),
+                cliente
+                    .from('partidas_resumen')
+                    .select('mesa_id,mesa_created_at,fecha_final,limite_puntos,jugador1_id,jugador2_id,jugador3_id,jugador4_id,cuenta_tabla_general,torneo_v2_id,puntos_pareja1,puntos_pareja2,rondas,ganador,es_lisa,diferencial,clutch_winner_team')
+                    .eq('cuenta_tabla_general', true)
+                    .order('fecha_final', { ascending: true })
+                    .order('mesa_id', { ascending: true })
+            ]);
+
+            if (perfilesRes.error) throw perfilesRes.error;
+            if (partidasRes.error) {
+                console.warn('[RESUMEN] Consultas vuelve temporalmente a manos crudas:', partidasRes.error);
+                return originalDatos();
+            }
+
+            return {
+                perfiles: perfilesRes.data || [],
+                partidasResumen: partidasRes.data || []
+            };
+        };
+        obtenerDatosResumidos.__resumenServidor = true;
+
+        const aplicarDatosResumidos = function (datos) {
+            if (!Array.isArray(datos?.partidasResumen)) {
+                window._partidasResumenGlobal = null;
+                return originalAplicar(datos);
+            }
+
+            const perfiles = Array.isArray(datos?.perfiles) ? datos.perfiles : [];
+            window._perfilesGlobal = perfiles;
+            window._manosGlobal = [];
+            window._partidasResumenGlobal = datos.partidasResumen;
+            if (typeof window.inicializarSelectores === 'function') {
+                window.inicializarSelectores(perfiles, []);
+            }
+        };
+
+        const obtenerPartidasResumidas = function () {
+            const resumenes = window._partidasResumenGlobal;
+            if (!Array.isArray(resumenes)) return originalAgrupar();
+            return resumenes
+                .map(convertirResumenAPartida)
+                .filter(Boolean)
+                .sort((a, b) => a.timestamp - b.timestamp);
+        };
+
+        window.obtenerDatosConsultas = obtenerDatosResumidos;
+        window.aplicarDatosConsultas = aplicarDatosResumidos;
+        window.obtenerPartidasAgrupadas = obtenerPartidasResumidas;
+
+        // El resumen se publica en Realtime. Un cierre/corrección de partida
+        // refresca Consultas sin volver a escuchar cada mano individual.
+        let timer = null;
+        try {
+            cliente
+                .channel('consultas-partidas-resumen')
+                .on('postgres_changes', {
+                    event: '*', schema: 'public', table: 'partidas_resumen'
+                }, () => {
+                    clearTimeout(timer);
+                    timer = setTimeout(async () => {
+                        try {
+                            const datos = await obtenerDatosResumidos();
+                            aplicarDatosResumidos(datos);
+                            localStorage.setItem('cache_consultas_historicas_v2', JSON.stringify(datos));
+                        } catch (error) {
+                            console.warn('[RESUMEN] No se pudo refrescar Consultas:', error);
+                        }
+                    }, 250);
+                })
+                .subscribe();
+        } catch (errorRealtime) {
+            console.warn('[RESUMEN] Realtime de Consultas no disponible:', errorRealtime);
+        }
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', instalar, { once: true });
+    } else {
+        instalar();
+    }
+})();
+
+// ============================================================
 // INTEGRACIÓN DEL HISTORIAL LEGADO
 // Solo debe intervenir en la Tabla General (Lobby) y el Top Anual
 // (Galardones). El resto de estadísticas sigue usando únicamente
