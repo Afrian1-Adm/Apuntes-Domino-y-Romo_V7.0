@@ -1,5 +1,5 @@
-const CORE_CACHE = 'club-domino-core-v82';
-const RUNTIME_CACHE = 'club-domino-runtime-v82';
+const CORE_CACHE = 'club-domino-core-v83';
+const RUNTIME_CACHE = 'club-domino-runtime-v83';
 
 const SUPABASE_SDK_URL = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';
 
@@ -248,7 +248,7 @@ async function inyectarRuntimeMesa(response, url) {
     const html = await response.clone().text();
     if (html.includes('elo-runtime.js')) return response;
 
-    const etiqueta = '<script src="./elo-runtime.js?v=82"></script>';
+    const etiqueta = '<script src="./elo-runtime.js?v=83"></script>';
     const htmlFinal = html.includes('</head>')
         ? html.replace('</head>', `    ${etiqueta}\n</head>`)
         : `${etiqueta}\n${html}`;
