@@ -212,6 +212,20 @@
         };
         window.abrirModalEditar.__cargaBajoDemanda = true;
 
+        // Las mutaciones de manos/mesas ya ejecutan triggers ELO síncronos.
+        // Estos triggers refrescan la partida canónica y reconstruyen desde el
+        // checkpoint seguro anterior solo cuando el resultado realmente cambia.
+        // El RPC histórico recalcular_elo() fuerza un rebuild completo desde 0,
+        // por lo que repetirlo aquí después de los triggers es redundante.
+        if (typeof window.recalcularEloTrasCambioHistorial === 'function') {
+            const eloYaActualizadoPorTriggers = async function () {
+                console.log('[ADMIN | ELO] Actualizado por triggers incrementales con checkpoints.');
+                return true;
+            };
+            eloYaActualizadoPorTriggers.__eloIncrementalTriggers = true;
+            window.recalcularEloTrasCambioHistorial = eloYaActualizadoPorTriggers;
+        }
+
         // Mantiene la vista administrativa fresca sin volver a descargar el
         // historial completo. Las manos solo refrescan el bloque de mesas activas.
         let timerHistorial = null;
