@@ -23,7 +23,8 @@
 
     // Supabase limita por defecto las lecturas REST grandes. Paginar de forma
     // transparente las consultas completas de manos evita truncar el historial
-    // cuando el club supera 1,000 registros.
+    // cuando el club supera 1,000 registros. Se conserva como fallback para
+    // módulos administrativos que todavía necesitan las manos individuales.
     const nativeFetch = window.fetch.bind(window);
     const SUPABASE_PAGE_SIZE = 1000;
     const SUPABASE_MAX_PAGES = 100;
@@ -166,6 +167,109 @@
     }
 
     instalarHistorialAdminSoloCerrado();
+
+    // Historial público: usa una fila persistente por partida cerrada en lugar
+    // de descargar todas las manos y reconstruirlas en el teléfono.
+    function instalarHistorialDesdeResumenServidor() {
+        const pagina = (location.pathname.split('/').pop() || '').toLowerCase();
+        if (pagina !== 'historial.html') return;
+
+        document.addEventListener('DOMContentLoaded', () => {
+            try {
+                if (typeof cargarHistorialCompleto !== 'function') return;
+                if (cargarHistorialCompleto.__resumenServidor) return;
+
+                const original = cargarHistorialCompleto;
+                const cliente = window.supabaseClient;
+                if (!cliente) return;
+
+                const cargarDesdeResumen = async function () {
+                    const { data, error } = await cliente
+                        .from('partidas_resumen')
+                        .select('mesa_id,mesa_created_at,fecha_final,limite_puntos,jugador1_id,jugador2_id,jugador3_id,jugador4_id,cuenta_tabla_general,torneo_v2_id,puntos_pareja1,puntos_pareja2,rondas,ganador,es_lisa,diferencial,clutch_winner_team')
+                        .order('fecha_final', { ascending: false })
+                        .order('mesa_id', { ascending: false });
+
+                    if (error) {
+                        console.warn('[RESUMEN] Historial vuelve temporalmente a manos crudas:', error);
+                        return original();
+                    }
+
+                    const nuevasPartidas = (data || []).map(resumen => {
+                        const mesaBase = cacheMesas?.[resumen.mesa_id] || {};
+                        const mesa = {
+                            ...mesaBase,
+                            id: resumen.mesa_id,
+                            created_at: resumen.mesa_created_at || resumen.fecha_final,
+                            estado: 'cerrada',
+                            limite_puntos: Number(resumen.limite_puntos || 200),
+                            jugador1_id: resumen.jugador1_id,
+                            jugador2_id: resumen.jugador2_id,
+                            jugador3_id: resumen.jugador3_id,
+                            jugador4_id: resumen.jugador4_id,
+                            cuenta_tabla_general: resumen.cuenta_tabla_general !== false,
+                            torneo_v2_id: resumen.torneo_v2_id || null
+                        };
+
+                        return {
+                            mesa_id: resumen.mesa_id,
+                            mesas: mesa,
+                            puntos_pareja1: Number(resumen.puntos_pareja1 || 0),
+                            puntos_pareja2: Number(resumen.puntos_pareja2 || 0),
+                            rondas: Number(resumen.rondas || 0),
+                            created_at: resumen.fecha_final,
+                            finalizada: true,
+                            ganador: Number(resumen.ganador || 0),
+                            es_lisa: resumen.es_lisa === true,
+                            diferencial: Number(resumen.diferencial || 0),
+                            clutch_winner_team: Number(resumen.clutch_winner_team || 0)
+                        };
+                    });
+
+                    const payloadToCache = {
+                        partidas: nuevasPartidas,
+                        perfiles: cachePerfiles,
+                        mesas: cacheMesas
+                    };
+                    const firmaNueva = typeof firmaDatosHistorial === 'function'
+                        ? firmaDatosHistorial(payloadToCache)
+                        : JSON.stringify(payloadToCache);
+
+                    if (firmaNueva !== firmaHistorialRenderizada) {
+                        cachePartidas = nuevasPartidas;
+                        firmaHistorialRenderizada = firmaNueva;
+                        try {
+                            localStorage.setItem('cache_historial_domino_v1', JSON.stringify(payloadToCache));
+                        } catch (_) {}
+                        if (typeof aplicarFiltros === 'function') aplicarFiltros();
+                    }
+                };
+                cargarDesdeResumen.__resumenServidor = true;
+                cargarHistorialCompleto = cargarDesdeResumen;
+
+                let timer = null;
+                try {
+                    cliente
+                        .channel('historial-partidas-resumen')
+                        .on('postgres_changes', {
+                            event: '*', schema: 'public', table: 'partidas_resumen'
+                        }, () => {
+                            clearTimeout(timer);
+                            timer = setTimeout(() => cargarDesdeResumen().catch(error => {
+                                console.warn('[RESUMEN] No se pudo refrescar Historial:', error);
+                            }), 250);
+                        })
+                        .subscribe();
+                } catch (errorRealtime) {
+                    console.warn('[RESUMEN] Realtime de Historial no disponible:', errorRealtime);
+                }
+            } catch (error) {
+                console.warn('[RESUMEN] No se pudo instalar Historial resumido:', error);
+            }
+        }, { once: true });
+    }
+
+    instalarHistorialDesdeResumenServidor();
 
     function currentFile() {
         return (location.pathname.split('/').pop() || 'index.html').toLowerCase();
