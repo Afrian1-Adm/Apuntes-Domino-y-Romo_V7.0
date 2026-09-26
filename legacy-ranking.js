@@ -241,3 +241,14 @@
     script.dataset.statisticsIntegrity = 'true';
     (document.head || document.documentElement).appendChild(script);
 })();
+
+// Compatibilidad temporal de mesa.html con ELO v2. El servidor es ahora la
+// única autoridad de recálculo; este módulo evita una segunda llamada del cliente.
+(function () {
+    if (document.querySelector('script[data-elo-runtime]')) return;
+    const script = document.createElement('script');
+    script.src = 'elo-runtime.js?v=20260926-1';
+    script.async = false;
+    script.dataset.eloRuntime = 'true';
+    (document.head || document.documentElement).appendChild(script);
+})();
