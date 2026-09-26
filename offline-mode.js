@@ -21,15 +21,9 @@
     const WRITE_WORDS = /(?:guardar|crear|registrar|anotar|eliminar|borrar|rechazar|aprobar|añadir|agregar|inscribir|retirar|editar|reiniciar|finalizar|subir|importar|sortear|rotar|reanudar|buscar\s+reemplazo|elegir\s+retadores|iniciar\s+mesa|cerrar\s+(?:mesa|jornada|sesión|sesion)|abrir\s+(?:otra\s+)?mesa|cambiar\s+contraseña|actualizar\s+(?:perfil|nombres|meta|contraseña|password)|guardar\s+cambios)/i;
     const WRITE_CALLS = /(?:insert|upsert|update|delete|signOut|guardar|crear|registrar|anotar|eliminar|borrar|aprobar|rechazar|retirar|inscribir|iniciarMesa|cerrarMesa|abrirMesa|rotar|sortear|finalizar|reiniciar|reanudarMesa|completarMesa)/i;
 
-    /*
-     * Supabase limita por defecto las consultas REST grandes. La app ya
-     * superó las 1,000 manos, así que una consulta simple a "manos" podía
-     * devolver un historial incompleto sin lanzar error.
-     *
-     * Este wrapper pagina de forma transparente SOLO las lecturas completas
-     * de /rest/v1/manos. Respeta .range(), .limit(), .single() y cualquier
-     * consulta que ya haya pedido un rango explícito.
-     */
+    // Supabase limita por defecto las lecturas REST grandes. Paginar de forma
+    // transparente las consultas completas de manos evita truncar el historial
+    // cuando el club supera 1,000 registros.
     const nativeFetch = window.fetch.bind(window);
     const SUPABASE_PAGE_SIZE = 1000;
     const SUPABASE_MAX_PAGES = 100;
@@ -38,19 +32,14 @@
         if (request.method !== 'GET') return false;
         if (!(url.hostname.includes('supabase.co') || url.hostname.includes('supabase.in'))) return false;
         if (!/^\/rest\/v1\/manos\/?$/.test(url.pathname)) return false;
-
         if (request.headers.has('range')) return false;
         if (url.searchParams.has('limit') || url.searchParams.has('offset')) return false;
 
         const accept = String(request.headers.get('accept') || '').toLowerCase();
-        if (
+        return !(
             accept.includes('application/vnd.pgrst.object') ||
             accept.includes('application/vnd.pgrst.object+json')
-        ) {
-            return false;
-        }
-
-        return true;
+        );
     }
 
     async function fetchSupabaseConPaginacion(input, init) {
@@ -68,12 +57,10 @@
             return nativeFetch(request);
         }
 
-        if (!debePaginarManosSupabase(request, url)) {
-            return nativeFetch(request);
-        }
+        if (!debePaginarManosSupabase(request, url)) return nativeFetch(request);
 
         const primeraRespuesta = await nativeFetch(request.clone());
-        if (!primeraRespuesta || !primeraRespuesta.ok) return primeraRespuesta;
+        if (!primeraRespuesta?.ok) return primeraRespuesta;
 
         const contentType = String(primeraRespuesta.headers.get('content-type') || '').toLowerCase();
         if (!contentType.includes('application/json')) return primeraRespuesta;
@@ -98,9 +85,7 @@
             headers.set('Range-Unit', 'items');
             headers.set('Range', `${desde}-${desde + SUPABASE_PAGE_SIZE - 1}`);
 
-            const pageRequest = new Request(request, { headers });
-            const pageResponse = await nativeFetch(pageRequest);
-
+            const pageResponse = await nativeFetch(new Request(request, { headers }));
             if (!pageResponse.ok) {
                 throw new Error(`No se pudo completar la lectura paginada de manos (${pageResponse.status}).`);
             }
@@ -111,9 +96,7 @@
             }
 
             datos.push(...pageData);
-
             if (pageData.length < SUPABASE_PAGE_SIZE) break;
-
             desde += SUPABASE_PAGE_SIZE;
             pagina += 1;
         }
@@ -125,10 +108,7 @@
         const headersFinales = new Headers(primeraRespuesta.headers);
         headersFinales.delete('content-length');
         headersFinales.set('content-type', 'application/json; charset=utf-8');
-        headersFinales.set(
-            'content-range',
-            datos.length ? `0-${datos.length - 1}/*` : '*/0'
-        );
+        headersFinales.set('content-range', datos.length ? `0-${datos.length - 1}/*` : '*/0');
 
         return new Response(JSON.stringify(datos), {
             status: 200,
@@ -148,7 +128,7 @@
         if (!APP_PAGES.has(file)) return;
         try {
             localStorage.setItem(LAST_PAGE_KEY, file + location.search + location.hash);
-        } catch (error) {}
+        } catch (_) {}
     }
 
     function isOffline() {
@@ -307,142 +287,6 @@
         return false;
     }
 
-    function validarAnotacionMesa(event) {
-        if (currentFile() !== 'mesa.html') return;
-        if (!(event.target instanceof HTMLFormElement)) return;
-
-        const p1Input = event.target.querySelector('#input-p1') || document.getElementById('input-p1');
-        const p2Input = event.target.querySelector('#input-p2') || document.getElementById('input-p2');
-        if (!p1Input || !p2Input) return;
-
-        const raw1 = String(p1Input.value || '').trim();
-        const raw2 = String(p2Input.value || '').trim();
-        const p1 = raw1 === '' ? 0 : Number(raw1);
-        const p2 = raw2 === '' ? 0 : Number(raw2);
-
-        let mensaje = '';
-
-        if (!Number.isFinite(p1) || !Number.isFinite(p2) || !Number.isInteger(p1) || !Number.isInteger(p2)) {
-            mensaje = 'Los puntos deben ser números enteros.';
-        } else if (p1 < 0 || p2 < 0) {
-            mensaje = 'Los puntos no pueden ser negativos.';
-        } else if (p1 > 0 && p2 > 0) {
-            mensaje = 'Anota los puntos de una sola pareja por mano.';
-        } else if (p1 > 168 || p2 > 168) {
-            mensaje = 'Una sola mano no puede superar 168 puntos. Revisa el valor antes de guardarlo.';
-        }
-
-        if (!mensaje) return;
-
-        event.preventDefault();
-        event.stopImmediatePropagation();
-        showToast(mensaje);
-        try { alert(mensaje); } catch (_) {}
-    }
-
-    function prepararControlesMesa() {
-        if (currentFile() !== 'mesa.html') return;
-        ['input-p1', 'input-p2'].forEach(id => {
-            const input = document.getElementById(id);
-            if (!input) return;
-            input.setAttribute('min', '0');
-            input.setAttribute('max', '168');
-            input.setAttribute('step', '1');
-            input.setAttribute('inputmode', 'numeric');
-        });
-    }
-
-    function parchearHistorialAdmin() {
-        if (currentFile() !== 'admin.html') return;
-        if (typeof window.cargarHistorialCerradoAdmin !== 'function') return;
-
-        const original = window.cargarHistorialCerradoAdmin;
-
-        window.cargarHistorialCerradoAdmin = async function cargarHistorialCerradoAdminSeguro() {
-            try {
-                if (
-                    typeof sbClient === 'undefined' ||
-                    typeof cacheMesas === 'undefined' ||
-                    typeof cachePartidasCerradas === 'undefined' ||
-                    typeof renderizarHistorialLocal !== 'function'
-                ) {
-                    return original.apply(this, arguments);
-                }
-
-                const { data, error } = await sbClient
-                    .from('manos')
-                    .select('*')
-                    .eq('anulada', false)
-                    .order('created_at', { ascending: true })
-                    .order('id', { ascending: true });
-
-                if (error) {
-                    const cuerpo = document.getElementById('cuerpo-tabla-historial');
-                    if (cuerpo) {
-                        cuerpo.innerHTML = '<tr><td colspan="9" style="text-align: center; color: var(--accent-red);">Error al cargar historial.</td></tr>';
-                    }
-                    return;
-                }
-
-                const mesasAcumulado = {};
-
-                (data || []).forEach(m => {
-                    const mesaId = m.mesa_id;
-
-                    if (!mesasAcumulado[mesaId]) {
-                        const mesaInfo = cacheMesas[mesaId] || { id: mesaId, limite_puntos: 200 };
-                        mesasAcumulado[mesaId] = {
-                            mesa_id: mesaId,
-                            mesas: mesaInfo,
-                            puntos_pareja1: 0,
-                            puntos_pareja2: 0,
-                            rondas: 0,
-                            created_at: m.created_at,
-                            finalizada: false,
-                            manos_ids: []
-                        };
-                    }
-
-                    const partida = mesasAcumulado[mesaId];
-
-                    // Una partida cerrada no puede seguir acumulando manos.
-                    if (partida.finalizada) return;
-
-                    partida.puntos_pareja1 += Number(m.puntos_pareja1 || 0);
-                    partida.puntos_pareja2 += Number(m.puntos_pareja2 || 0);
-                    partida.rondas += 1;
-                    partida.manos_ids.push(m);
-
-                    if (m.created_at) partida.created_at = m.created_at;
-
-                    const limite = Number(partida.mesas?.limite_puntos || 200);
-                    if (
-                        partida.puntos_pareja1 >= limite ||
-                        partida.puntos_pareja2 >= limite
-                    ) {
-                        partida.finalizada = true;
-                    }
-                });
-
-                cachePartidasCerradas = Object.values(mesasAcumulado)
-                    .filter(p => p.finalizada)
-                    .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
-
-                try {
-                    localStorage.setItem(
-                        'domino_cache_admin_historial_v1',
-                        JSON.stringify(cachePartidasCerradas)
-                    );
-                } catch (_) {}
-
-                renderizarHistorialLocal();
-            } catch (error) {
-                console.error('[APP] No se pudo aplicar el historial administrativo corregido:', error);
-                return original.apply(this, arguments);
-            }
-        };
-    }
-
     function applyState() {
         if (isOffline()) {
             showBanner();
@@ -451,6 +295,7 @@
             hideBanner();
             restoreControls();
         }
+
         window.dispatchEvent(new CustomEvent('app:connectionchange', {
             detail: {
                 offline: isOffline(),
@@ -479,10 +324,6 @@
         assertWritable();
     }, true);
 
-    // Se registra en captura antes del onsubmit de mesa.html para que una mano
-    // inválida jamás llegue a la cola offline ni al RPC de Supabase.
-    document.addEventListener('submit', validarAnotacionMesa, true);
-
     document.addEventListener('submit', event => {
         if (!isOffline()) return;
         if (event.target instanceof Element && event.target.closest(`${OFFLINE_QUEUE_SELECTOR}, [data-offline-allow]`)) return;
@@ -494,23 +335,18 @@
     window.addEventListener('online', applyState);
     window.addEventListener('offline', applyState);
 
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', () => {
-            prepararControlesMesa();
-            parchearHistorialAdmin();
-            applyState();
-            new MutationObserver(records => {
-                if (!isOffline()) return;
-                records.forEach(record => record.addedNodes.forEach(markWriteControls));
-            }).observe(document.body, { childList: true, subtree: true });
-        }, { once: true });
-    } else {
-        prepararControlesMesa();
-        parchearHistorialAdmin();
+    function iniciarObservador() {
         applyState();
+        if (!document.body) return;
         new MutationObserver(records => {
             if (!isOffline()) return;
             records.forEach(record => record.addedNodes.forEach(markWriteControls));
         }).observe(document.body, { childList: true, subtree: true });
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', iniciarObservador, { once: true });
+    } else {
+        iniciarObservador();
     }
 })();
