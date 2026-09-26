@@ -1,5 +1,5 @@
-const CORE_CACHE = 'club-domino-core-v80';
-const RUNTIME_CACHE = 'club-domino-runtime-v80';
+const CORE_CACHE = 'club-domino-core-v81';
+const RUNTIME_CACHE = 'club-domino-runtime-v81';
 
 const SUPABASE_SDK_URL = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';
 
@@ -238,6 +238,32 @@ async function cacheFirstExternal(request) {
     return response;
 }
 
+async function inyectarRuntimeMesa(response, url) {
+    if (!response?.ok) return response;
+    if (!url.pathname.toLowerCase().endsWith('/mesa.html')) return response;
+
+    const contentType = String(response.headers.get('content-type') || '').toLowerCase();
+    if (!contentType.includes('text/html')) return response;
+
+    const html = await response.clone().text();
+    if (html.includes('elo-runtime.js')) return response;
+
+    const etiqueta = '<script src="./elo-runtime.js?v=81"></script>';
+    const htmlFinal = html.includes('</head>')
+        ? html.replace('</head>', `    ${etiqueta}\n</head>`)
+        : `${etiqueta}\n${html}`;
+
+    const headers = new Headers(response.headers);
+    headers.delete('content-length');
+    headers.set('content-type', 'text/html; charset=utf-8');
+
+    return new Response(htmlFinal, {
+        status: response.status,
+        statusText: response.statusText,
+        headers
+    });
+}
+
 self.addEventListener('fetch', event => {
     const request = event.request;
     const url = new URL(request.url);
@@ -253,7 +279,12 @@ self.addEventListener('fetch', event => {
     if (url.origin !== self.location.origin) return;
 
     if (esRecursoActualizable(request, url)) {
-        event.respondWith(cacheFirstApp(request, event));
+        event.respondWith((async () => {
+            const response = await cacheFirstApp(request, event);
+            return esHTML(request, url)
+                ? inyectarRuntimeMesa(response, url)
+                : response;
+        })());
         return;
     }
 
