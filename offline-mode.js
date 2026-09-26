@@ -119,6 +119,54 @@
 
     window.fetch = fetchSupabaseConPaginacion;
 
+    // Admin todavía construye su historial a partir de las manos completas para
+    // conservar la edición ronda por ronda. Tras esa carga filtramos únicamente
+    // partidas que sí alcanzaron la meta. Así una mesa activa con una o más manos
+    // nunca aparece como si ya fuera parte del historial cerrado.
+    function instalarHistorialAdminSoloCerrado() {
+        const pagina = (location.pathname.split('/').pop() || '').toLowerCase();
+        if (pagina !== 'admin.html') return;
+
+        document.addEventListener('DOMContentLoaded', () => {
+            try {
+                if (typeof cargarHistorialCerradoAdmin !== 'function') return;
+                if (cargarHistorialCerradoAdmin.__soloPartidasFinalizadas) return;
+
+                const original = cargarHistorialCerradoAdmin;
+                const envuelta = async function (...args) {
+                    const resultado = await original.apply(this, args);
+
+                    if (Array.isArray(cachePartidasCerradas)) {
+                        const soloFinalizadas = cachePartidasCerradas.filter(partida => partida?.finalizada === true);
+                        if (soloFinalizadas.length !== cachePartidasCerradas.length) {
+                            cachePartidasCerradas = soloFinalizadas;
+                            try {
+                                localStorage.setItem(
+                                    'domino_cache_admin_historial_v1',
+                                    JSON.stringify(cachePartidasCerradas)
+                                );
+                            } catch (_) {}
+
+                            try { firmaHistorialAdmin = ''; } catch (_) {}
+                            if (typeof renderizarHistorialLocal === 'function') {
+                                renderizarHistorialLocal();
+                            }
+                        }
+                    }
+
+                    return resultado;
+                };
+
+                envuelta.__soloPartidasFinalizadas = true;
+                cargarHistorialCerradoAdmin = envuelta;
+            } catch (error) {
+                console.warn('[ADMIN] No se pudo instalar el filtro de historial cerrado:', error);
+            }
+        }, { once: true });
+    }
+
+    instalarHistorialAdminSoloCerrado();
+
     function currentFile() {
         return (location.pathname.split('/').pop() || 'index.html').toLowerCase();
     }
