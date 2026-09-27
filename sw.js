@@ -1,5 +1,5 @@
-const CORE_CACHE = 'club-domino-core-v89';
-const RUNTIME_CACHE = 'club-domino-runtime-v89';
+const CORE_CACHE = 'club-domino-core-v90';
+const RUNTIME_CACHE = 'club-domino-runtime-v90';
 
 const SUPABASE_SDK_URL = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';
 
@@ -114,18 +114,32 @@ function esRecursoVisual(request, url) {
         pathname.endsWith('.ico');
 }
 
-async function buscarCacheLocal(request, cachePrincipal, cacheSecundaria = null) {
+function esScriptVersionado(request, url) {
+    const pathname = url.pathname.toLowerCase();
+    return url.searchParams.has('v') &&
+        (request.destination === 'script' || pathname.endsWith('.js'));
+}
+
+async function buscarCacheLocal(request, cachePrincipal, cacheSecundaria = null, permitirRutaLimpia = true) {
     const exacta = await cachePrincipal.match(request);
     if (exacta) return exacta;
 
-    // Los scripts se cargan con ?v=... para invalidación. La precarga del core
-    // usa la ruta limpia; este fallback permite utilizarlos también sin Internet.
+    if (cacheSecundaria) {
+        const exactaSecundaria = await cacheSecundaria.match(request);
+        if (exactaSecundaria) return exactaSecundaria;
+    }
+
+    if (!permitirRutaLimpia) return null;
+
+    // Los scripts sin versión explícita pueden reutilizar la ruta limpia.
+    // Los scripts ?v=... solo llegan aquí como fallback offline después de
+    // intentar primero su versión exacta de red.
     const limpia = claveSinQuery(request);
     const normalizada = await cachePrincipal.match(limpia);
     if (normalizada) return normalizada;
 
     if (cacheSecundaria) {
-        return await cacheSecundaria.match(request) || await cacheSecundaria.match(limpia);
+        return await cacheSecundaria.match(limpia);
     }
     return null;
 }
@@ -193,13 +207,17 @@ async function staleWhileRevalidate(request) {
 async function cacheFirstApp(request, fetchEvent) {
     const url = new URL(request.url);
     const html = esHTML(request, url);
+    const versionado = esScriptVersionado(request, url);
     const cacheKey = html ? claveSinQuery(request) : request;
     const runtime = await caches.open(RUNTIME_CACHE);
     const core = await caches.open(CORE_CACHE);
-    const cached = await buscarCacheLocal(cacheKey, runtime, core);
+
+    // Un ?v=... es un contrato de actualización. No lo satisfacemos con el
+    // archivo limpio de una versión anterior mientras haya red disponible.
+    const cached = await buscarCacheLocal(cacheKey, runtime, core, !versionado);
 
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 8000);
+    const timeoutId = setTimeout(() => controller.abort(), versionado ? 3500 : 8000);
     const networkPromise = fetch(new Request(request, {
         cache: 'no-store',
         signal: controller.signal
@@ -207,8 +225,8 @@ async function cacheFirstApp(request, fetchEvent) {
         .then(async response => {
             if (response?.ok) {
                 await runtime.put(cacheKey, response.clone());
-                // Conservamos además la ruta limpia para que ?v=... tenga un
-                // fallback inequívoco en la próxima apertura sin conexión.
+                // También mantenemos la ruta limpia actualizada para el modo
+                // offline y para páginas que carguen el mismo script sin ?v=.
                 await runtime.put(claveSinQuery(request), response.clone());
             }
             return response;
@@ -224,6 +242,18 @@ async function cacheFirstApp(request, fetchEvent) {
 
     const response = await networkPromise;
     if (response) return response;
+
+    // Si una versión exacta no pudo llegar (sin conexión o red inestable),
+    // recuperamos el último script limpio conocido. La PWA sigue funcionando.
+    if (versionado) {
+        const fallbackVersionado = await buscarCacheLocal(
+            claveSinQuery(request),
+            runtime,
+            core,
+            true
+        );
+        if (fallbackVersionado) return fallbackVersionado;
+    }
 
     if (html) {
         const index = await core.match('./index.html');
@@ -253,10 +283,10 @@ async function inyectarRuntimeMesa(response, url) {
     const html = await response.clone().text();
     const etiquetas = [];
     if (!html.includes('elo-runtime.js')) {
-        etiquetas.push('<script src="./elo-runtime.js?v=89"></script>');
+        etiquetas.push('<script src="./elo-runtime.js?v=90"></script>');
     }
     if (!html.includes('mesa-realtime-runtime.js')) {
-        etiquetas.push('<script src="./mesa-realtime-runtime.js?v=89"></script>');
+        etiquetas.push('<script src="./mesa-realtime-runtime.js?v=90"></script>');
     }
     if (!etiquetas.length) return response;
 
@@ -290,7 +320,7 @@ async function inyectarRuntimeResumen(response, url) {
     const html = await response.clone().text();
     if (html.includes('summary-stats-runtime.js')) return response;
 
-    const etiqueta = '<script src="./summary-stats-runtime.js?v=89"></script>';
+    const etiqueta = '<script src="./summary-stats-runtime.js?v=90"></script>';
     const htmlFinal = html.includes('</head>')
         ? html.replace('</head>', `    ${etiqueta}\n</head>`)
         : `${etiqueta}\n${html}`;
@@ -316,7 +346,7 @@ async function inyectarRuntimeAdmin(response, url) {
     const html = await response.clone().text();
     if (html.includes('admin-summary-runtime.js')) return response;
 
-    const etiqueta = '<script src="./admin-summary-runtime.js?v=89"></script>';
+    const etiqueta = '<script src="./admin-summary-runtime.js?v=90"></script>';
     const htmlFinal = html.includes('</head>')
         ? html.replace('</head>', `    ${etiqueta}\n</head>`)
         : `${etiqueta}\n${html}`;
@@ -342,7 +372,7 @@ async function inyectarRuntimeLobby(response, url) {
     const html = await response.clone().text();
     if (html.includes('lobby-performance-runtime.js')) return response;
 
-    const etiqueta = '<script src="./lobby-performance-runtime.js?v=89"></script>';
+    const etiqueta = '<script src="./lobby-performance-runtime.js?v=90"></script>';
     const htmlFinal = html.includes('</head>')
         ? html.replace('</head>', `    ${etiqueta}\n</head>`)
         : `${etiqueta}\n${html}`;
@@ -368,7 +398,7 @@ async function inyectarRuntimeTombola(response, url) {
     const html = await response.clone().text();
     if (html.includes('tombola-performance-runtime.js')) return response;
 
-    const etiqueta = '<script src="./tombola-performance-runtime.js?v=89"></script>';
+    const etiqueta = '<script src="./tombola-performance-runtime.js?v=90"></script>';
     const htmlFinal = html.includes('</head>')
         ? html.replace('</head>', `    ${etiqueta}\n</head>`)
         : `${etiqueta}\n${html}`;
