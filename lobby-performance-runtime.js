@@ -100,6 +100,104 @@
         };
     }
 
+    function instalarIntercepcionMesas(db) {
+        if (!db || db.__lobbyConsultaCompactaInstalada) return;
+
+        const fromOriginal = db.from.bind(db);
+
+        function consultaCompatible(compactaInicial, completaInicial) {
+            let compacta = compactaInicial;
+            let completa = completaInicial;
+            let ejecutada = null;
+
+            const ejecutar = () => {
+                if (!ejecutada) {
+                    ejecutada = Promise.resolve(compacta).then(async resultado => {
+                        if (!resultado?.error) {
+                            return {
+                                ...resultado,
+                                data: (resultado.data || []).map(mapearMesaViva)
+                            };
+                        }
+
+                        console.warn('[LOBBY COMPACTO] Vista de mesas no disponible; se usa consulta completa:', resultado.error);
+                        return await completa;
+                    });
+                }
+                return ejecutada;
+            };
+
+            const proxy = new Proxy({}, {
+                get(_target, propiedad) {
+                    if (propiedad === 'then') {
+                        return (ok, fail) => ejecutar().then(ok, fail);
+                    }
+                    if (propiedad === 'catch') {
+                        return fail => ejecutar().catch(fail);
+                    }
+                    if (propiedad === 'finally') {
+                        return fin => ejecutar().finally(fin);
+                    }
+
+                    const metodoCompacto = compacta?.[propiedad];
+                    const metodoCompleto = completa?.[propiedad];
+                    if (typeof metodoCompacto === 'function' && typeof metodoCompleto === 'function') {
+                        return (...args) => {
+                            compacta = metodoCompacto.apply(compacta, args);
+                            completa = metodoCompleto.apply(completa, args);
+                            return proxy;
+                        };
+                    }
+
+                    return metodoCompacto;
+                }
+            });
+
+            return proxy;
+        }
+
+        db.from = function (tabla) {
+            const builder = fromOriginal(tabla);
+            if (tabla !== 'mesas') return builder;
+
+            return new Proxy(builder, {
+                get(target, propiedad, receiver) {
+                    if (propiedad !== 'select') {
+                        const valor = Reflect.get(target, propiedad, receiver);
+                        return typeof valor === 'function' ? valor.bind(target) : valor;
+                    }
+
+                    return (columnas, opciones) => {
+                        const texto = String(columnas || '').replace(/\s+/g, '');
+                        const esConsultaPesadaLobby =
+                            texto.includes('manos(*)') &&
+                            texto.includes('j1:jugador1_id(*)') &&
+                            texto.includes('j2:jugador2_id(*)') &&
+                            texto.includes('j3:jugador3_id(*)') &&
+                            texto.includes('j4:jugador4_id(*)');
+
+                        if (!esConsultaPesadaLobby) {
+                            return target.select(columnas, opciones);
+                        }
+
+                        const compacta = fromOriginal('vw_lobby_mesas_activas_resumen').select('*');
+                        const completa = target.select(columnas, opciones);
+                        return consultaCompatible(compacta, completa);
+                    };
+                }
+            });
+        };
+
+        try {
+            Object.defineProperty(db, '__lobbyConsultaCompactaInstalada', {
+                value: true,
+                configurable: true
+            });
+        } catch (_) {
+            db.__lobbyConsultaCompactaInstalada = true;
+        }
+    }
+
     function instalar() {
         const db = clienteActual();
         const originalMesas = window.cargarMesasActivas;
@@ -108,6 +206,12 @@
         if (!db || typeof originalMesas !== 'function' || typeof originalClasificatoria !== 'function') {
             return;
         }
+
+        // Red de seguridad para los callbacks ya creados por lobby.html: aunque
+        // conserven la referencia a cargarMesasActivas original, su consulta
+        // pesada de mesas + manos se transforma de forma transparente en la
+        // vista compacta y devuelve exactamente la misma forma de datos.
+        instalarIntercepcionMesas(db);
 
         const cargarMesasCompactas = async function () {
             const contenedor = document.getElementById('lista-mesas');
@@ -232,10 +336,11 @@
         }
 
         window.LobbyPerformanceRuntime = {
-            version: 1,
+            version: 2,
             vistaMesas: 'vw_lobby_mesas_activas_resumen',
             vistaPartidas: 'vw_lobby_partidas_resumen',
-            fallbackClasificatoriaMs: FALLBACK_CLASIFICATORIA_MS
+            fallbackClasificatoriaMs: FALLBACK_CLASIFICATORIA_MS,
+            interceptaConsultaLegacyMesas: true
         };
     }
 
