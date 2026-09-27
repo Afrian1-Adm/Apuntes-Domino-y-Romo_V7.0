@@ -1,5 +1,5 @@
-const CORE_CACHE = 'club-domino-core-v88';
-const RUNTIME_CACHE = 'club-domino-runtime-v88';
+const CORE_CACHE = 'club-domino-core-v89';
+const RUNTIME_CACHE = 'club-domino-runtime-v89';
 
 const SUPABASE_SDK_URL = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';
 
@@ -30,6 +30,7 @@ const CORE_ASSETS = [
     './summary-stats-runtime.js',
     './admin-summary-runtime.js',
     './lobby-performance-runtime.js',
+    './tombola-performance-runtime.js',
     './icon-192.png',
     './icon-512.png'
 ];
@@ -252,10 +253,10 @@ async function inyectarRuntimeMesa(response, url) {
     const html = await response.clone().text();
     const etiquetas = [];
     if (!html.includes('elo-runtime.js')) {
-        etiquetas.push('<script src="./elo-runtime.js?v=88"></script>');
+        etiquetas.push('<script src="./elo-runtime.js?v=89"></script>');
     }
     if (!html.includes('mesa-realtime-runtime.js')) {
-        etiquetas.push('<script src="./mesa-realtime-runtime.js?v=88"></script>');
+        etiquetas.push('<script src="./mesa-realtime-runtime.js?v=89"></script>');
     }
     if (!etiquetas.length) return response;
 
@@ -289,7 +290,7 @@ async function inyectarRuntimeResumen(response, url) {
     const html = await response.clone().text();
     if (html.includes('summary-stats-runtime.js')) return response;
 
-    const etiqueta = '<script src="./summary-stats-runtime.js?v=88"></script>';
+    const etiqueta = '<script src="./summary-stats-runtime.js?v=89"></script>';
     const htmlFinal = html.includes('</head>')
         ? html.replace('</head>', `    ${etiqueta}\n</head>`)
         : `${etiqueta}\n${html}`;
@@ -315,7 +316,7 @@ async function inyectarRuntimeAdmin(response, url) {
     const html = await response.clone().text();
     if (html.includes('admin-summary-runtime.js')) return response;
 
-    const etiqueta = '<script src="./admin-summary-runtime.js?v=88"></script>';
+    const etiqueta = '<script src="./admin-summary-runtime.js?v=89"></script>';
     const htmlFinal = html.includes('</head>')
         ? html.replace('</head>', `    ${etiqueta}\n</head>`)
         : `${etiqueta}\n${html}`;
@@ -341,7 +342,33 @@ async function inyectarRuntimeLobby(response, url) {
     const html = await response.clone().text();
     if (html.includes('lobby-performance-runtime.js')) return response;
 
-    const etiqueta = '<script src="./lobby-performance-runtime.js?v=88"></script>';
+    const etiqueta = '<script src="./lobby-performance-runtime.js?v=89"></script>';
+    const htmlFinal = html.includes('</head>')
+        ? html.replace('</head>', `    ${etiqueta}\n</head>`)
+        : `${etiqueta}\n${html}`;
+
+    const headers = new Headers(response.headers);
+    headers.delete('content-length');
+    headers.set('content-type', 'text/html; charset=utf-8');
+
+    return new Response(htmlFinal, {
+        status: response.status,
+        statusText: response.statusText,
+        headers
+    });
+}
+
+async function inyectarRuntimeTombola(response, url) {
+    if (!response?.ok) return response;
+    if (!url.pathname.toLowerCase().endsWith('/tombola.html')) return response;
+
+    const contentType = String(response.headers.get('content-type') || '').toLowerCase();
+    if (!contentType.includes('text/html')) return response;
+
+    const html = await response.clone().text();
+    if (html.includes('tombola-performance-runtime.js')) return response;
+
+    const etiqueta = '<script src="./tombola-performance-runtime.js?v=89"></script>';
     const htmlFinal = html.includes('</head>')
         ? html.replace('</head>', `    ${etiqueta}\n</head>`)
         : `${etiqueta}\n${html}`;
@@ -378,7 +405,8 @@ self.addEventListener('fetch', event => {
             const conRuntimeMesa = await inyectarRuntimeMesa(response, url);
             const conRuntimeResumen = await inyectarRuntimeResumen(conRuntimeMesa, url);
             const conRuntimeAdmin = await inyectarRuntimeAdmin(conRuntimeResumen, url);
-            return inyectarRuntimeLobby(conRuntimeAdmin, url);
+            const conRuntimeLobby = await inyectarRuntimeLobby(conRuntimeAdmin, url);
+            return inyectarRuntimeTombola(conRuntimeLobby, url);
         })());
         return;
     }
