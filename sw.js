@@ -1,5 +1,5 @@
-const CORE_CACHE = 'club-domino-core-v86';
-const RUNTIME_CACHE = 'club-domino-runtime-v86';
+const CORE_CACHE = 'club-domino-core-v87';
+const RUNTIME_CACHE = 'club-domino-runtime-v87';
 
 const SUPABASE_SDK_URL = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';
 
@@ -29,6 +29,7 @@ const CORE_ASSETS = [
     './mesa-realtime-runtime.js',
     './summary-stats-runtime.js',
     './admin-summary-runtime.js',
+    './lobby-performance-runtime.js',
     './icon-192.png',
     './icon-512.png'
 ];
@@ -251,10 +252,10 @@ async function inyectarRuntimeMesa(response, url) {
     const html = await response.clone().text();
     const etiquetas = [];
     if (!html.includes('elo-runtime.js')) {
-        etiquetas.push('<script src="./elo-runtime.js?v=86"></script>');
+        etiquetas.push('<script src="./elo-runtime.js?v=87"></script>');
     }
     if (!html.includes('mesa-realtime-runtime.js')) {
-        etiquetas.push('<script src="./mesa-realtime-runtime.js?v=86"></script>');
+        etiquetas.push('<script src="./mesa-realtime-runtime.js?v=87"></script>');
     }
     if (!etiquetas.length) return response;
 
@@ -288,7 +289,7 @@ async function inyectarRuntimeResumen(response, url) {
     const html = await response.clone().text();
     if (html.includes('summary-stats-runtime.js')) return response;
 
-    const etiqueta = '<script src="./summary-stats-runtime.js?v=86"></script>';
+    const etiqueta = '<script src="./summary-stats-runtime.js?v=87"></script>';
     const htmlFinal = html.includes('</head>')
         ? html.replace('</head>', `    ${etiqueta}\n</head>`)
         : `${etiqueta}\n${html}`;
@@ -314,7 +315,33 @@ async function inyectarRuntimeAdmin(response, url) {
     const html = await response.clone().text();
     if (html.includes('admin-summary-runtime.js')) return response;
 
-    const etiqueta = '<script src="./admin-summary-runtime.js?v=86"></script>';
+    const etiqueta = '<script src="./admin-summary-runtime.js?v=87"></script>';
+    const htmlFinal = html.includes('</head>')
+        ? html.replace('</head>', `    ${etiqueta}\n</head>`)
+        : `${etiqueta}\n${html}`;
+
+    const headers = new Headers(response.headers);
+    headers.delete('content-length');
+    headers.set('content-type', 'text/html; charset=utf-8');
+
+    return new Response(htmlFinal, {
+        status: response.status,
+        statusText: response.statusText,
+        headers
+    });
+}
+
+async function inyectarRuntimeLobby(response, url) {
+    if (!response?.ok) return response;
+    if (!url.pathname.toLowerCase().endsWith('/lobby.html')) return response;
+
+    const contentType = String(response.headers.get('content-type') || '').toLowerCase();
+    if (!contentType.includes('text/html')) return response;
+
+    const html = await response.clone().text();
+    if (html.includes('lobby-performance-runtime.js')) return response;
+
+    const etiqueta = '<script src="./lobby-performance-runtime.js?v=87"></script>';
     const htmlFinal = html.includes('</head>')
         ? html.replace('</head>', `    ${etiqueta}\n</head>`)
         : `${etiqueta}\n${html}`;
@@ -350,7 +377,8 @@ self.addEventListener('fetch', event => {
             if (!esHTML(request, url)) return response;
             const conRuntimeMesa = await inyectarRuntimeMesa(response, url);
             const conRuntimeResumen = await inyectarRuntimeResumen(conRuntimeMesa, url);
-            return inyectarRuntimeAdmin(conRuntimeResumen, url);
+            const conRuntimeAdmin = await inyectarRuntimeAdmin(conRuntimeResumen, url);
+            return inyectarRuntimeLobby(conRuntimeAdmin, url);
         })());
         return;
     }
