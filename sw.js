@@ -1,5 +1,5 @@
-const CORE_CACHE = 'club-domino-core-v87';
-const RUNTIME_CACHE = 'club-domino-runtime-v87';
+const CORE_CACHE = 'club-domino-core-v88';
+const RUNTIME_CACHE = 'club-domino-runtime-v88';
 
 const SUPABASE_SDK_URL = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';
 
@@ -252,10 +252,10 @@ async function inyectarRuntimeMesa(response, url) {
     const html = await response.clone().text();
     const etiquetas = [];
     if (!html.includes('elo-runtime.js')) {
-        etiquetas.push('<script src="./elo-runtime.js?v=87"></script>');
+        etiquetas.push('<script src="./elo-runtime.js?v=88"></script>');
     }
     if (!html.includes('mesa-realtime-runtime.js')) {
-        etiquetas.push('<script src="./mesa-realtime-runtime.js?v=87"></script>');
+        etiquetas.push('<script src="./mesa-realtime-runtime.js?v=88"></script>');
     }
     if (!etiquetas.length) return response;
 
@@ -289,7 +289,7 @@ async function inyectarRuntimeResumen(response, url) {
     const html = await response.clone().text();
     if (html.includes('summary-stats-runtime.js')) return response;
 
-    const etiqueta = '<script src="./summary-stats-runtime.js?v=87"></script>';
+    const etiqueta = '<script src="./summary-stats-runtime.js?v=88"></script>';
     const htmlFinal = html.includes('</head>')
         ? html.replace('</head>', `    ${etiqueta}\n</head>`)
         : `${etiqueta}\n${html}`;
@@ -315,7 +315,7 @@ async function inyectarRuntimeAdmin(response, url) {
     const html = await response.clone().text();
     if (html.includes('admin-summary-runtime.js')) return response;
 
-    const etiqueta = '<script src="./admin-summary-runtime.js?v=87"></script>';
+    const etiqueta = '<script src="./admin-summary-runtime.js?v=88"></script>';
     const htmlFinal = html.includes('</head>')
         ? html.replace('</head>', `    ${etiqueta}\n</head>`)
         : `${etiqueta}\n${html}`;
@@ -341,7 +341,7 @@ async function inyectarRuntimeLobby(response, url) {
     const html = await response.clone().text();
     if (html.includes('lobby-performance-runtime.js')) return response;
 
-    const etiqueta = '<script src="./lobby-performance-runtime.js?v=87"></script>';
+    const etiqueta = '<script src="./lobby-performance-runtime.js?v=88"></script>';
     const htmlFinal = html.includes('</head>')
         ? html.replace('</head>', `    ${etiqueta}\n</head>`)
         : `${etiqueta}\n${html}`;
