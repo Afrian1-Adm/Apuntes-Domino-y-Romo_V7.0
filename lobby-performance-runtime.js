@@ -147,7 +147,8 @@
                 }
             } catch (error) {
                 console.warn('[LOBBY COMPACTO] Fallback a mesas completas:', error);
-                return originalMesas.apply(this, arguments);
+                asignarEstado('cargandoMesasEnVivo', false);
+                return await originalMesas.apply(this, arguments);
             } finally {
                 asignarEstado('cargandoMesasEnVivo', false);
             }
