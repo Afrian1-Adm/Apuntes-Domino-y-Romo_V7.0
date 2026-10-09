@@ -4157,4 +4157,14 @@
         }
     );
 
+
+    navigator.serviceWorker?.addEventListener(
+        'message',
+        event => {
+            if (event.data?.type === 'PUSH_SUBSCRIPTION_CHANGED') {
+                reconciliarPushCelular(true);
+            }
+        }
+    );
+
 })();
