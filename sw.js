@@ -1,5 +1,5 @@
-const CORE_CACHE = 'club-domino-core-v91';
-const RUNTIME_CACHE = 'club-domino-runtime-v91';
+const CORE_CACHE = 'club-domino-core-v92';
+const RUNTIME_CACHE = 'club-domino-runtime-v92';
 
 const SUPABASE_SDK_URL = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';
 
@@ -485,6 +485,22 @@ self.addEventListener('notificationclick', event => {
         return self.clients.openWindow ? self.clients.openWindow(urlDestino) : null;
     })());
 });
+
+self.addEventListener('pushsubscriptionchange', event => {
+    event.waitUntil((async () => {
+        const windows = await self.clients.matchAll({
+            type: 'window',
+            includeUncontrolled: true
+        });
+
+        for (const client of windows) {
+            try {
+                client.postMessage({ type: 'PUSH_SUBSCRIPTION_CHANGED' });
+            } catch (_) {}
+        }
+    })());
+});
+
 
 self.addEventListener('push', event => {
     let payload = {};
