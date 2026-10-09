@@ -2654,8 +2654,12 @@
             });
         }
 
+        let creandoMesa = false;
+
         async function crearNuevaMesa(e) {
             e.preventDefault();
+            if (creandoMesa) return;
+
             const j1 = document.getElementById('select-j1').value;
             const j2 = document.getElementById('select-j2').value;
             const j3 = document.getElementById('select-j3').value;
@@ -2668,21 +2672,49 @@
                 return;
             }
 
-            const { data, error } = await supabase
-                .from('mesas')
-                .insert([{
-                    jugador1_id: j1,
-                    jugador2_id: j2,
-                    jugador3_id: j3,
-                    jugador4_id: j4,
-                    limite_puntos: limitePuntos,
-                    estado: 'abierta'
-                }])
-                .select()
-                .single();
+            const submitBtn = e.currentTarget?.querySelector('button[type="submit"]')
+                || document.querySelector('.crear-mesa-submit');
 
-            if (error) alert('Error al crear mesa: ' + error.message);
-            else window.location.href = `mesa.html?id=${data.id}`;
+            creandoMesa = true;
+            if (submitBtn) {
+                submitBtn.disabled = true;
+                submitBtn.dataset.textoOriginal = submitBtn.innerHTML;
+                submitBtn.textContent = 'Abriendo mesa…';
+            }
+
+            try {
+                const { data, error } = await supabase
+                    .from('mesas')
+                    .insert([{
+                        jugador1_id: j1,
+                        jugador2_id: j2,
+                        jugador3_id: j3,
+                        jugador4_id: j4,
+                        limite_puntos: limitePuntos,
+                        estado: 'abierta'
+                    }])
+                    .select()
+                    .single();
+
+                if (error) {
+                    alert('Error al crear mesa: ' + error.message);
+                    creandoMesa = false;
+                    if (submitBtn) {
+                        submitBtn.disabled = false;
+                        submitBtn.innerHTML = submitBtn.dataset.textoOriginal || 'Abrir Mesa de Anote →';
+                    }
+                    return;
+                }
+
+                window.location.href = `mesa.html?id=${data.id}`;
+            } catch (error) {
+                creandoMesa = false;
+                if (submitBtn) {
+                    submitBtn.disabled = false;
+                    submitBtn.innerHTML = submitBtn.dataset.textoOriginal || 'Abrir Mesa de Anote →';
+                }
+                alert('No se pudo abrir la mesa. Inténtalo nuevamente.');
+            }
         }
 
         async function inicializarDatosClasificatoria(esSilencioso = false) {
