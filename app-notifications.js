@@ -3302,58 +3302,6 @@
         }
 
 
-        const keyResponse =
-            await fetch(
-
-                `${SUPABASE_URL}/functions/v1/push-web`,
-
-                {
-
-                    method:
-                        'GET',
-
-                    headers: {
-
-                        apikey:
-                            SUPABASE_ANON_KEY,
-
-                        Authorization:
-                            `Bearer ${session.access_token}`
-
-                    }
-
-                }
-
-            );
-
-
-        if (
-            !keyResponse.ok
-        ) {
-
-            throw new Error(
-                'El servicio de avisos del celular todavía no está publicado.'
-            );
-
-        }
-
-
-        const {
-            publicKey
-        } =
-            await keyResponse
-                .json();
-
-
-        if (!publicKey) {
-
-            throw new Error(
-                'Falta la clave pública del servicio de avisos.'
-            );
-
-        }
-
-
         const registration =
             await navigator
                 .serviceWorker
@@ -3366,7 +3314,67 @@
                 .getSubscription();
 
 
+        /*
+         * No confiamos únicamente en localStorage.
+         *
+         * Android, Chrome, Safari y el propio Service Worker pueden perder
+         * o renovar una PushSubscription. Si todavía existe, la volvemos a
+         * registrar en Supabase para reparar cualquier fila borrada o
+         * desactualizada. Si desapareció, solicitamos una nueva usando VAPID.
+         */
         if (!subscription) {
+
+            const keyResponse =
+                await fetch(
+
+                    `${SUPABASE_URL}/functions/v1/push-web`,
+
+                    {
+
+                        method:
+                            'GET',
+
+                        headers: {
+
+                            apikey:
+                                SUPABASE_ANON_KEY,
+
+                            Authorization:
+                                `Bearer ${session.access_token}`
+
+                        }
+
+                    }
+
+                );
+
+
+            if (
+                !keyResponse.ok
+            ) {
+
+                throw new Error(
+                    'El servicio de avisos del celular todavía no está publicado.'
+                );
+
+            }
+
+
+            const {
+                publicKey
+            } =
+                await keyResponse
+                    .json();
+
+
+            if (!publicKey) {
+
+                throw new Error(
+                    'Falta la clave pública del servicio de avisos.'
+                );
+
+            }
+
 
             subscription =
                 await registration
@@ -3854,11 +3862,12 @@
 
 
             /*
-             * Si el usuario ya había concedido
-             * permiso de notificaciones pero
-             * por algún motivo se perdió el
-             * registro local del Push,
-             * intentamos recuperarlo.
+             * Reconciliación real de Web Push.
+             *
+             * Aunque localStorage diga que el celular está activo, verificamos
+             * la PushSubscription del navegador y la sincronizamos con
+             * Supabase. Esto repara automáticamente dispositivos que dejaron
+             * de recibir avisos al quedar la app en segundo plano.
              */
 
             if (
@@ -3867,11 +3876,7 @@
                 in window &&
 
                 Notification.permission ===
-                'granted' &&
-
-                localStorage.getItem(
-                    'domino_push_celular_activo'
-                ) !== '1'
+                'granted'
 
             ) {
 
@@ -3881,12 +3886,22 @@
 
                 } catch (error) {
 
+                    localStorage.removeItem(
+                        'domino_push_celular_activo'
+                    );
+
                     console.warn(
-                        '[AVISOS] No se pudo restaurar Web Push:',
+                        '[AVISOS] No se pudo reconciliar Web Push:',
                         error
                     );
 
                 }
+
+            } else {
+
+                localStorage.removeItem(
+                    'domino_push_celular_activo'
+                );
 
             }
 
