@@ -3854,11 +3854,17 @@
 
 
             /*
-             * Si el usuario ya había concedido
-             * permiso de notificaciones pero
-             * por algún motivo se perdió el
-             * registro local del Push,
-             * intentamos recuperarlo.
+             * Reconciliamos SIEMPRE la suscripción real del navegador.
+             *
+             * Antes solo lo hacíamos cuando la bandera local decía que Push
+             * estaba apagado. En Android/Chrome esa bandera puede quedarse en
+             * "1" aunque el endpoint real se haya perdido o rotado, dejando
+             * funcionando Realtime en primer plano pero sin avisos al quedar
+             * la PWA en segundo plano/cerrada.
+             *
+             * activarPushCelular() reutiliza la suscripción existente cuando
+             * sigue válida o crea una nueva si desapareció, y en ambos casos
+             * vuelve a sincronizar endpoint + claves con Supabase.
              */
 
             if (
@@ -3867,11 +3873,7 @@
                 in window &&
 
                 Notification.permission ===
-                'granted' &&
-
-                localStorage.getItem(
-                    'domino_push_celular_activo'
-                ) !== '1'
+                'granted'
 
             ) {
 
@@ -3881,8 +3883,12 @@
 
                 } catch (error) {
 
+                    localStorage.removeItem(
+                        'domino_push_celular_activo'
+                    );
+
                     console.warn(
-                        '[AVISOS] No se pudo restaurar Web Push:',
+                        '[AVISOS] No se pudo reconciliar Web Push:',
                         error
                     );
 
@@ -3925,6 +3931,87 @@
 
 
     // ==========================================================
+    // RECONCILIACIÓN PUSH AL VOLVER A LA APP
+    // ==========================================================
+
+    let reconciliacionPushEnCurso = null;
+    let ultimaReconciliacionPush = 0;
+
+    async function reconciliarPushCelular(forzar = false) {
+
+        if (
+            !avisosActivos() ||
+            !('Notification' in window) ||
+            Notification.permission !== 'granted' ||
+            !('serviceWorker' in navigator) ||
+            !('PushManager' in window)
+        ) {
+            return false;
+        }
+
+        const ahora = Date.now();
+
+        // Evita repetir llamadas por visibilitychange/pageshow casi simultáneos.
+        if (
+            !forzar &&
+            ahora - ultimaReconciliacionPush < 15000
+        ) {
+            return true;
+        }
+
+        if (reconciliacionPushEnCurso) {
+            return reconciliacionPushEnCurso;
+        }
+
+        reconciliacionPushEnCurso = (async () => {
+            try {
+                const session = await asegurarContextoUsuario();
+
+                if (!session || !perfil?.id) {
+                    return false;
+                }
+
+                // activarPushCelular() primero consulta getSubscription().
+                // Si existe, la reutiliza y la vuelve a registrar en Supabase.
+                // Si no existe, crea una nueva con la clave VAPID vigente.
+                const ok = await activarPushCelular();
+
+                if (ok) {
+                    ultimaReconciliacionPush = Date.now();
+                    localStorage.setItem(
+                        'domino_push_ultima_reconciliacion',
+                        String(ultimaReconciliacionPush)
+                    );
+                }
+
+                actualizarBoton();
+                return Boolean(ok);
+
+            } catch (error) {
+
+                localStorage.removeItem(
+                    'domino_push_celular_activo'
+                );
+
+                actualizarBoton();
+
+                console.warn(
+                    '[AVISOS] No se pudo reconciliar la suscripción Push:',
+                    error
+                );
+
+                return false;
+
+            } finally {
+                reconciliacionPushEnCurso = null;
+            }
+        })();
+
+        return reconciliacionPushEnCurso;
+    }
+
+
+    // ==========================================================
     // API GLOBAL
     // ==========================================================
 
@@ -3945,6 +4032,8 @@
         actualizarBoton,
 
         avisosActivos,
+
+        reconciliarPushCelular,
 
         get perfil() {
 
@@ -4025,6 +4114,45 @@
         () => {
             window.requestAnimationFrame(
                 ajustarEscalaAvisos
+            );
+        }
+    );
+
+
+    /*
+     * Android puede mantener la PWA viva en segundo plano durante bastante
+     * tiempo. Cuando vuelve a primer plano verificamos el endpoint Push real
+     * en vez de confiar en una bandera antigua de localStorage.
+     */
+
+    document.addEventListener(
+        'visibilitychange',
+        () => {
+            if (document.visibilityState === 'visible') {
+                reconciliarPushCelular(false);
+            }
+        },
+        { passive: true }
+    );
+
+
+    window.addEventListener(
+        'pageshow',
+        () => {
+            reconciliarPushCelular(false);
+        },
+        { passive: true }
+    );
+
+
+    navigator.serviceWorker?.addEventListener(
+        'controllerchange',
+        () => {
+            // Un Service Worker nuevo debe volver a confirmar que la
+            // suscripción vinculada al registro actual sigue registrada.
+            window.setTimeout(
+                () => reconciliarPushCelular(true),
+                800
             );
         }
     );
