@@ -3940,6 +3940,76 @@
 
 
     // ==========================================================
+    // RECONCILIACIÓN PUSH AL VOLVER A LA APP
+    // ==========================================================
+
+    let reconciliacionPushEnCurso = null;
+    let ultimaReconciliacionPush = 0;
+
+    async function reconciliarPushCelular(forzar = false) {
+
+        if (
+            !avisosActivos() ||
+            !('Notification' in window) ||
+            Notification.permission !== 'granted' ||
+            !('serviceWorker' in navigator) ||
+            !('PushManager' in window)
+        ) {
+            return false;
+        }
+
+        const ahora = Date.now();
+
+        if (
+            !forzar &&
+            ahora - ultimaReconciliacionPush < 15000
+        ) {
+            return true;
+        }
+
+        if (reconciliacionPushEnCurso) {
+            return reconciliacionPushEnCurso;
+        }
+
+        reconciliacionPushEnCurso = (async () => {
+            try {
+                const session = await asegurarContextoUsuario();
+                if (!session || !perfil?.id) return false;
+
+                const ok = await activarPushCelular();
+
+                if (ok) {
+                    ultimaReconciliacionPush = Date.now();
+                }
+
+                actualizarBoton();
+                return Boolean(ok);
+
+            } catch (error) {
+
+                localStorage.removeItem(
+                    'domino_push_celular_activo'
+                );
+
+                actualizarBoton();
+
+                console.warn(
+                    '[AVISOS] No se pudo reconciliar la suscripción Push:',
+                    error
+                );
+
+                return false;
+
+            } finally {
+                reconciliacionPushEnCurso = null;
+            }
+        })();
+
+        return reconciliacionPushEnCurso;
+    }
+
+
+    // ==========================================================
     // API GLOBAL
     // ==========================================================
 
@@ -3960,6 +4030,8 @@
         actualizarBoton,
 
         avisosActivos,
+
+        reconciliarPushCelular,
 
         get perfil() {
 
@@ -4041,6 +4113,47 @@
             window.requestAnimationFrame(
                 ajustarEscalaAvisos
             );
+        }
+    );
+
+
+    document.addEventListener(
+        'visibilitychange',
+        () => {
+            if (document.visibilityState === 'visible') {
+                reconciliarPushCelular(false);
+            }
+        },
+        { passive: true }
+    );
+
+
+    window.addEventListener(
+        'pageshow',
+        () => {
+            reconciliarPushCelular(false);
+        },
+        { passive: true }
+    );
+
+
+    navigator.serviceWorker?.addEventListener(
+        'controllerchange',
+        () => {
+            window.setTimeout(
+                () => reconciliarPushCelular(true),
+                800
+            );
+        }
+    );
+
+
+    navigator.serviceWorker?.addEventListener(
+        'message',
+        event => {
+            if (event.data?.type === 'PUSH_SUBSCRIPTION_CHANGED') {
+                reconciliarPushCelular(true);
+            }
         }
     );
 
