@@ -384,12 +384,43 @@
 
         if ('serviceWorker' in navigator && esServidorSeguro) {
             window.addEventListener('load', () => {
-                navigator.serviceWorker.register('./sw.js?v=70', {
+                navigator.serviceWorker.register('./sw.js?v=95', {
                     scope: './',
                     updateViaCache: 'none'
                 })
-                    .then(registro => registro.update())
+                    .then(async registro => {
+                        await registro.update();
+
+                        if (registro.waiting) {
+                            registro.waiting.postMessage({ type: 'SKIP_WAITING' });
+                        }
+
+                        registro.addEventListener('updatefound', () => {
+                            const nuevoWorker = registro.installing;
+                            if (!nuevoWorker) return;
+
+                            nuevoWorker.addEventListener('statechange', () => {
+                                if (nuevoWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                                    nuevoWorker.postMessage({ type: 'SKIP_WAITING' });
+                                }
+                            });
+                        });
+                    })
                     .catch(error => console.warn('No se pudo registrar el service worker:', error));
+
+                let recargaPorActualizacion = false;
+                navigator.serviceWorker.addEventListener('controllerchange', () => {
+                    if (recargaPorActualizacion) return;
+                    recargaPorActualizacion = true;
+
+                    try {
+                        const clave = 'domino_sw_controller_reload_v95';
+                        if (sessionStorage.getItem(clave) === '1') return;
+                        sessionStorage.setItem(clave, '1');
+                    } catch (_) {}
+
+                    window.location.reload();
+                });
             });
         }
 
