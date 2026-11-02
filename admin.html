@@ -1313,12 +1313,47 @@
         else await refrescarTodo();
     }
 
+    async function cargarTodasLasManosAdmin() {
+        const PAGE_SIZE = 1000;
+        const todas = [];
+        let desde = 0;
+
+        while (true) {
+            const hasta = desde + PAGE_SIZE - 1;
+            const { data, error } = await sbClient
+                .from('manos')
+                .select('*')
+                .eq('anulada', false)
+                .order('created_at', { ascending: true })
+                .order('id', { ascending: true })
+                .range(desde, hasta);
+
+            if (error) throw error;
+
+            const bloque = data || [];
+            todas.push(...bloque);
+
+            if (bloque.length < PAGE_SIZE) break;
+            desde += PAGE_SIZE;
+        }
+
+        return todas;
+    }
+
     async function cargarMesasDetalladas() {
         const { data: mesas, error: errMesas } = await sbClient.from('mesas').select('*').order('creado_en', { ascending: false });
-        const { data: manos, error: errManos } = await sbClient.from('manos').select('*').eq('anulada', false);
+        let manos = [];
+        let errManos = null;
+
+        try {
+            manos = await cargarTodasLasManosAdmin();
+        } catch (error) {
+            errManos = error;
+            console.error('Error cargando todas las manos para mesas activas:', error);
+        }
         
         const cont = document.getElementById('lista-mesas');
-        if (errMesas || !mesas) {
+        if (errMesas || errManos || !mesas) {
             cont.innerHTML = '<div style="color: var(--text-muted); text-align: center; font-size: 0.85rem;">Error al cargar mesas.</div>';
             return;
         }
@@ -1353,20 +1388,18 @@
     }
 
     async function cargarHistorialCerradoAdmin() {
-        const { data, error } = await sbClient
-            .from('manos')
-            .select('*')
-            .eq('anulada', false)
-            // Orden cronológico: la última mano de la partida representa su cierre.
-            .order('created_at', { ascending: true })
-            .order('id', { ascending: true });
-        if (error) {
+        let data = [];
+
+        try {
+            data = await cargarTodasLasManosAdmin();
+        } catch (error) {
+            console.error('Error cargando historial completo:', error);
             document.getElementById('cuerpo-tabla-historial').innerHTML = `<tr><td colspan="9" style="text-align: center; color: var(--accent-red);">Error al cargar historial.</td></tr>`;
             return;
         }
 
         const mesasAcumulado = {};
-        (data || []).forEach(m => {
+        data.forEach(m => {
             const mesaId = m.mesa_id;
             if (!mesasAcumulado[mesaId]) {
                 const mesaInfo = cacheMesas[mesaId] || { id: mesaId, limite_puntos: 200 };
