@@ -1325,6 +1325,10 @@ const SUPABASE_URL = 'https://kzbslfwupzwczmjqfjem.supabase.co';
 
             mostrarMensaje('Contraseña actualizada. Ahora podrás entrar con tu nueva clave.', 'success');
             await supabase.auth.signOut();
+            try {
+                sessionStorage.removeItem('domino_auth_handoff_v1');
+                sessionStorage.removeItem('domino_login_redirect_pending');
+            } catch (_) {}
             window.setTimeout(() => {
                 window.history.replaceState({}, document.title, window.location.pathname);
                 location.reload();
