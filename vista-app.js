@@ -43,6 +43,8 @@
         }
     }
 
+    // Empezar cuanto antes; el bucle espera a que cada página cree su cliente.
+    restaurarSesionTemporal();
     window.addEventListener('DOMContentLoaded', () => {
         restaurarSesionTemporal();
     });
