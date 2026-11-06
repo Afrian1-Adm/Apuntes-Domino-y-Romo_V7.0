@@ -1,3 +1,55 @@
+(function instalarRespaldoSesionAuth() {
+    const HANDOFF_KEY = 'domino_auth_handoff_v1';
+    const MAX_AGE_MS = 15 * 60 * 1000;
+
+    async function restaurarSesionTemporal() {
+        const path = String(window.location.pathname || '').toLowerCase();
+        if (path.endsWith('/login.html') || path.endsWith('/index.html') || path.endsWith('/')) return;
+
+        let handoff = null;
+        try {
+            const raw = sessionStorage.getItem(HANDOFF_KEY);
+            handoff = raw ? JSON.parse(raw) : null;
+        } catch (_) {
+            return;
+        }
+
+        if (!handoff?.created_at || Date.now() - Number(handoff.created_at) > MAX_AGE_MS) {
+            try { sessionStorage.removeItem(HANDOFF_KEY); } catch (_) {}
+            return;
+        }
+
+        if (!handoff?.access_token || !handoff?.refresh_token) return;
+
+        // Las páginas crean el cliente Supabase en sus scripts inline. Esperamos
+        // brevemente a que esté disponible y solo restauramos si no hay sesión.
+        for (let intento = 0; intento < 40; intento += 1) {
+            const cliente = window.supabase;
+            if (cliente?.auth?.getSession && cliente?.auth?.setSession) {
+                try {
+                    const actual = await cliente.auth.getSession();
+                    if (!actual?.data?.session) {
+                        await cliente.auth.setSession({
+                            access_token: handoff.access_token,
+                            refresh_token: handoff.refresh_token
+                        });
+                    }
+                } catch (error) {
+                    console.warn('No se pudo restaurar la sesión temporal de la PWA:', error);
+                }
+                return;
+            }
+            await new Promise(resolve => window.setTimeout(resolve, 50));
+        }
+    }
+
+    // Empezar cuanto antes; el bucle espera a que cada página cree su cliente.
+    restaurarSesionTemporal();
+    window.addEventListener('DOMContentLoaded', () => {
+        restaurarSesionTemporal();
+    });
+})();
+
 (function () {
     'use strict';
 
@@ -384,7 +436,7 @@
 
         if ('serviceWorker' in navigator && esServidorSeguro) {
             window.addEventListener('load', () => {
-                navigator.serviceWorker.register('./sw.js?v=97', {
+                navigator.serviceWorker.register('./sw.js?v=98', {
                     scope: './',
                     updateViaCache: 'none'
                 })
@@ -414,7 +466,7 @@
                     recargaPorActualizacion = true;
 
                     try {
-                        const clave = 'domino_sw_controller_reload_v97';
+                        const clave = 'domino_sw_controller_reload_v98';
                         if (sessionStorage.getItem(clave) === '1') return;
                         sessionStorage.setItem(clave, '1');
                     } catch (_) {}

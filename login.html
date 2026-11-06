@@ -1212,11 +1212,43 @@ const SUPABASE_URL = 'https://kzbslfwupzwczmjqfjem.supabase.co';
         const password = document.getElementById('login-password').value;
 
         try {
-            const { error } = await supabase.auth.signInWithPassword({ email, password });
+            const { data, error } = await supabase.auth.signInWithPassword({ email, password });
 
             if (error) {
                 mostrarMensaje(mensajeErrorAuth(error, 'No fue posible iniciar sesión.'), 'error');
                 return;
+            }
+
+            const sesion = data?.session || null;
+            if (!sesion?.access_token || !sesion?.refresh_token) {
+                mostrarMensaje('El acceso fue aceptado, pero no se pudo conservar la sesión. Inténtalo nuevamente.', 'error');
+                return;
+            }
+
+            // Respaldo temporal para dispositivos donde localStorage no conserva
+            // la sesión entre login.html y lobby.html. sessionStorage mantiene el
+            // dato dentro de esta PWA y se usa solo para restaurar Auth.
+            try {
+                sessionStorage.setItem('domino_auth_handoff_v1', JSON.stringify({
+                    access_token: sesion.access_token,
+                    refresh_token: sesion.refresh_token,
+                    expires_at: sesion.expires_at || null,
+                    user_id: sesion.user?.id || null,
+                    created_at: Date.now()
+                }));
+            } catch (storageError) {
+                console.warn('No se pudo crear el respaldo temporal de sesión:', storageError);
+            }
+
+            // Fuerza una segunda escritura en el almacenamiento configurado por
+            // Supabase antes de navegar. Es idempotente para la misma sesión.
+            try {
+                await supabase.auth.setSession({
+                    access_token: sesion.access_token,
+                    refresh_token: sesion.refresh_token
+                });
+            } catch (setSessionError) {
+                console.warn('No se pudo reafirmar la sesión antes de abrir el lobby:', setSessionError);
             }
 
             mostrarMensaje('Acceso correcto. Abriendo el lobby…', 'success');
@@ -1293,6 +1325,10 @@ const SUPABASE_URL = 'https://kzbslfwupzwczmjqfjem.supabase.co';
 
             mostrarMensaje('Contraseña actualizada. Ahora podrás entrar con tu nueva clave.', 'success');
             await supabase.auth.signOut();
+            try {
+                sessionStorage.removeItem('domino_auth_handoff_v1');
+                sessionStorage.removeItem('domino_login_redirect_pending');
+            } catch (_) {}
             window.setTimeout(() => {
                 window.history.replaceState({}, document.title, window.location.pathname);
                 location.reload();

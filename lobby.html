@@ -2521,16 +2521,61 @@
                 if (perfilCache) {
                     perfilUsuario = perfilCache;
                     pintarDatosPerfilUI();
-                    return;
+                    return true;
                 }
             } catch (error) {}
             mostrarModoInvitado();
-            return;
+            return true;
         }
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session) { usuarioActual = session.user; await cargarPerfil(); return; }
-        if (localStorage.getItem('modo_invitado') === 'true') { mostrarModoInvitado(); return; }
+
+        let session = null;
+        try {
+            const resultado = await supabase.auth.getSession();
+            session = resultado?.data?.session || null;
+        } catch (error) {
+            console.warn('No se pudo leer la sesión guardada:', error);
+        }
+
+        // Fallback para dispositivos donde la sesión se autentica correctamente
+        // pero localStorage no la conserva durante la navegación.
+        if (!session) {
+            try {
+                const raw = sessionStorage.getItem('domino_auth_handoff_v1');
+                const handoff = raw ? JSON.parse(raw) : null;
+                const vigente = handoff?.created_at && (Date.now() - Number(handoff.created_at) < 15 * 60 * 1000);
+
+                if (vigente && handoff?.access_token && handoff?.refresh_token) {
+                    const restaurada = await supabase.auth.setSession({
+                        access_token: handoff.access_token,
+                        refresh_token: handoff.refresh_token
+                    });
+                    session = restaurada?.data?.session || null;
+                }
+            } catch (error) {
+                console.warn('No se pudo restaurar la sesión temporal:', error);
+            }
+        }
+
+        if (session) {
+            usuarioActual = session.user;
+
+            try {
+                sessionStorage.removeItem('domino_login_redirect_pending');
+                // Conservamos el handoff durante esta sesión de navegación para
+                // poder reparar otra página si localStorage vuelve a fallar.
+            } catch (_) {}
+
+            await cargarPerfil();
+            return true;
+        }
+
+        if (localStorage.getItem('modo_invitado') === 'true') {
+            mostrarModoInvitado();
+            return true;
+        }
+
         window.location.replace('login.html');
+        return false;
     }
 
         async function cargarPerfil() {
@@ -3568,6 +3613,10 @@
         await window.AppNotifications?.desactivarPushCelular?.();
         await supabase.auth.signOut();
         localStorage.removeItem('modo_invitado');
+        try {
+            sessionStorage.removeItem('domino_auth_handoff_v1');
+            sessionStorage.removeItem('domino_login_redirect_pending');
+        } catch (_) {}
         window.location.replace('login.html');
     }
 
@@ -3586,7 +3635,8 @@
             cacheClasificatoriaHidratada = hidratarTablaClasificatoriaDesdeCache();
         }
 
-        await verificarSesion();
+        const sesionLista = await verificarSesion();
+        if (!sesionLista) return;
         if (navigator.onLine === false) return;
         await Promise.allSettled([cargarMesasActivas(), inicializarDatosClasificatoria(), cargarTorneoActivoLobby()]);
         supabase.channel('cambios-en-vivo-general')
