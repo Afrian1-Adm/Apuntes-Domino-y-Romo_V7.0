@@ -1160,6 +1160,45 @@ const SUPABASE_URL = 'https://kzbslfwupzwczmjqfjem.supabase.co';
         return { ok: true, vinculado: true, perfil: data };
     }
 
+    let redireccionLobbyPendiente = false;
+    let redireccionLobbyEnCurso = false;
+
+    function destinoLobby() {
+        return new URL('lobby.html', window.location.href).href;
+    }
+
+    function forzarEntradaLobby() {
+        if (!redireccionLobbyPendiente || redireccionLobbyEnCurso) return;
+        redireccionLobbyEnCurso = true;
+
+        try {
+            window.location.replace(destinoLobby());
+        } finally {
+            // Si el navegador (por ejemplo, el gestor de contraseñas) bloquea
+            // temporalmente la navegación, permitimos reintentarlo al recuperar foco.
+            window.setTimeout(() => {
+                redireccionLobbyEnCurso = false;
+                if (redireccionLobbyPendiente) {
+                    try {
+                        window.location.replace(destinoLobby());
+                    } catch (_) {}
+                }
+            }, 350);
+        }
+    }
+
+    window.addEventListener('focus', () => {
+        if (redireccionLobbyPendiente) forzarEntradaLobby();
+    });
+
+    window.addEventListener('pageshow', () => {
+        if (redireccionLobbyPendiente) forzarEntradaLobby();
+    });
+
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden && redireccionLobbyPendiente) forzarEntradaLobby();
+    });
+
     async function loginUsuario(e) {
         e.preventDefault();
         const formulario = e.currentTarget;
@@ -1182,7 +1221,19 @@ const SUPABASE_URL = 'https://kzbslfwupzwczmjqfjem.supabase.co';
 
             mostrarMensaje('Acceso correcto. Abriendo el lobby…', 'success');
             localStorage.removeItem('modo_invitado');
-            window.location.href = 'lobby.html';
+
+            const passwordInput = document.getElementById('login-password');
+            if (passwordInput) {
+                passwordInput.value = '';
+                passwordInput.blur();
+            }
+
+            redireccionLobbyPendiente = true;
+            try {
+                sessionStorage.setItem('domino_login_redirect_pending', '1');
+            } catch (_) {}
+
+            forzarEntradaLobby();
         } catch (error) {
             mostrarMensaje(mensajeErrorAuth(error, 'No fue posible iniciar sesión.'), 'error');
         } finally {
@@ -1356,6 +1407,12 @@ window.addEventListener('DOMContentLoaded', async () => {
     let modoRecuperacion = false;
     actualizarTemaLogin();
 
+    try {
+        if (sessionStorage.getItem('domino_login_redirect_pending') === '1') {
+            redireccionLobbyPendiente = true;
+        }
+    } catch (_) {}
+
     // Registrar el listener antes de consultar la sesión.
     supabase.auth.onAuthStateChange((event) => {
         if (event === 'PASSWORD_RECOVERY') {
@@ -1388,8 +1445,17 @@ window.addEventListener('DOMContentLoaded', async () => {
 
     // Nunca enviar al lobby durante una recuperación.
     if (!modoRecuperacion && session) {
-        window.location.replace('lobby.html');
+        redireccionLobbyPendiente = true;
+        forzarEntradaLobby();
         return;
+    }
+
+    // Si no existe sesión, limpiamos cualquier marca pendiente de un intento anterior.
+    if (!modoRecuperacion && !session) {
+        redireccionLobbyPendiente = false;
+        try {
+            sessionStorage.removeItem('domino_login_redirect_pending');
+        } catch (_) {}
     }
 
     if (!modoRecuperacion) {
