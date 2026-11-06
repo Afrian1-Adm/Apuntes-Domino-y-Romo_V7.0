@@ -384,7 +384,7 @@
 
         if ('serviceWorker' in navigator && esServidorSeguro) {
             window.addEventListener('load', () => {
-                navigator.serviceWorker.register('./sw.js?v=96', {
+                navigator.serviceWorker.register('./sw.js?v=97', {
                     scope: './',
                     updateViaCache: 'none'
                 })
@@ -414,7 +414,7 @@
                     recargaPorActualizacion = true;
 
                     try {
-                        const clave = 'domino_sw_controller_reload_v96';
+                        const clave = 'domino_sw_controller_reload_v97';
                         if (sessionStorage.getItem(clave) === '1') return;
                         sessionStorage.setItem(clave, '1');
                     } catch (_) {}
