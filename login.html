@@ -1029,11 +1029,29 @@ const SUPABASE_URL = 'https://kzbslfwupzwczmjqfjem.supabase.co';
 
     function mensajeErrorAuth(error, mensajeBase) {
         const detalle = String(error?.message || '').toLowerCase();
+        const codigo = String(error?.code || '').toLowerCase();
 
         if (detalle.includes('invalid login credentials')) return 'El correo o la contraseña no son correctos.';
         if (detalle.includes('email not confirmed')) return 'Confirma tu correo electrónico antes de entrar.';
         if (detalle.includes('user already registered')) return 'Ya existe una cuenta registrada con ese correo.';
-        if (detalle.includes('password should be')) return 'La contraseña debe tener al menos 6 caracteres.';
+
+        // Supabase devuelve "same_password" cuando la nueva clave coincide con
+        // la anterior. Este caso debe evaluarse antes del mensaje genérico
+        // "password should be..." para no mostrar una longitud incorrecta.
+        if (
+            codigo === 'same_password' ||
+            detalle.includes('new password should be different from the old password')
+        ) {
+            return 'La nueva contraseña debe ser diferente de tu contraseña actual.';
+        }
+
+        if (detalle.includes('password should be')) {
+            const longitud = detalle.match(/at least\s+(\d+)\s+characters?/i)?.[1];
+            return longitud
+                ? `La contraseña debe tener al menos ${longitud} caracteres.`
+                : 'La contraseña no cumple con los requisitos de seguridad.';
+        }
+
         if (detalle.includes('failed to fetch') || detalle.includes('network')) return 'No pudimos conectar. Revisa tu internet e inténtalo otra vez.';
 
         return mensajeBase;
