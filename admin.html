@@ -657,6 +657,38 @@
         .btn-export { grid-column: auto; }
         .mesa-detalles { grid-template-columns: 1fr; }
     }
+
+    /* Comunicaciones del club: diseño integrado al panel */
+    .aviso-help { color: var(--text-muted); font-size: .84rem; line-height: 1.5; margin: 0 0 14px; }
+    .aviso-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    .aviso-campo { display: flex; flex-direction: column; gap: 6px; color: var(--text); font-size: .82rem; font-weight: 700; }
+    .aviso-campo--ancho { grid-column: 1 / -1; }
+    .aviso-campo input, .aviso-campo select, .aviso-campo textarea {
+        width: 100%; min-width: 0; box-sizing: border-box; border: 1px solid var(--border-color);
+        border-radius: 11px; padding: 12px; background: var(--card-inner);
+        color: var(--text); font: inherit; font-size: .9rem; font-weight: 500;
+    }
+    .aviso-campo textarea { resize: vertical; min-height: 95px; line-height: 1.45; }
+    .aviso-campo textarea:focus-visible { outline: 3px solid rgba(59,130,246,.2); outline-offset: 1px; }
+    .aviso-acciones { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-top: 12px; }
+    .aviso-acciones .btn { min-height: 43px; }
+    .aviso-ayuda { font-size: .78rem; color: var(--text-muted); line-height: 1.4; }
+    .aviso-preview { padding: 12px 0; margin-top: 12px; border-top: 1px solid var(--border-color); }
+    .aviso-preview strong, .aviso-preview p { display: block; overflow-wrap: anywhere; }
+    .aviso-preview p { color: var(--text-muted); font-size: .84rem; margin-top: 5px; white-space: pre-wrap; }
+    .aviso-mensaje-estado { margin-top: 10px; font-size: .85rem; font-weight: 650; }
+    .aviso-mensaje-estado[data-estado="error"] { color: var(--accent-red); }
+    .aviso-mensaje-estado[data-estado="ok"] { color: #10b981; }
+    .aviso-historial-titulo { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border-color); font-size: .9rem; }
+    .aviso-historial-fila { padding: 10px 0; border-bottom: 1px solid var(--border-color); font-size: .8rem; }
+    .aviso-historial-fila:last-child { border-bottom: 0; }
+    .aviso-historial-fila strong { overflow-wrap: anywhere; }
+    .aviso-historial-fila small { color: var(--text-muted); display: block; margin-top: 3px; }
+    @media (max-width: 650px) {
+      .aviso-grid { grid-template-columns: minmax(0, 1fr); }
+      .aviso-campo--ancho { grid-column: auto; }
+      .aviso-acciones .btn { width: 100%; }
+    }
     </style>
 
     <!-- Ajuste exclusivo para iPhone/iPad: respeta notch, Dynamic Island y barra inferior
@@ -740,6 +772,41 @@
     <div id="error-box" class="error-banner hidden"></div>
 
     <main class="admin-grid" id="admin-content" hidden>
+
+
+    <!-- AVISOS EXTRAORDINARIOS: los envíos requieren confirmación y permisos del servidor -->
+    <section class="card full-card" id="admin-avisos">
+        <div class="section-title"><span>📣 Enviar notificaciones</span><span class="page-pill">Administración</span></div>
+        <p class="aviso-help">Convoca jugadas extraordinarias, comunica cambios de horario o envía avisos del club. Se enviará un mensaje a cada jugador y administrador aprobado con cuenta vinculada. La notificación del celular depende de que tenga Push activado.</p>
+        <form id="form-admin-aviso" autocomplete="off">
+            <div class="aviso-grid">
+                <label class="aviso-campo">Tipo de aviso
+                    <select id="aviso-tipo" required>
+                        <option value="jugada_extraordinaria">🎲 Jugada extraordinaria</option>
+                        <option value="aviso_general">📢 Aviso general</option>
+                        <option value="cambio_horario">🕒 Cambio de horario</option>
+                    </select>
+                </label>
+                <label class="aviso-campo">Título
+                    <input id="aviso-titulo" type="text" minlength="5" maxlength="90" value="🎲 Jugada extraordinaria" required>
+                </label>
+                <label class="aviso-campo aviso-campo--ancho">Mensaje
+                    <textarea id="aviso-mensaje" minlength="10" maxlength="500" rows="3" placeholder="Ejemplo: Hoy tenemos una jugada extraordinaria. Hora: ... Lugar: ... ¡Te esperamos!" required></textarea>
+                </label>
+            </div>
+            <div class="aviso-preview" aria-live="polite">
+                <strong id="aviso-preview-titulo">🎲 Jugada extraordinaria</strong>
+                <p id="aviso-preview-mensaje">Escribe el mensaje que recibirán los jugadores.</p>
+            </div>
+            <div class="aviso-acciones">
+                <button id="aviso-enviar" class="btn btn-green" type="submit">📣 Enviar a los jugadores</button>
+                <span id="aviso-destinatarios" class="aviso-ayuda">Consultando destinatarios...</span>
+            </div>
+            <p id="aviso-estado" class="aviso-mensaje-estado" role="status" aria-live="polite"></p>
+        </form>
+        <h3 class="aviso-historial-titulo">Últimas notificaciones enviadas</h3>
+        <div id="aviso-historial" aria-live="polite" class="aviso-ayuda">Cargando historial...</div>
+    </section>
 
     <!-- 1. SOLICITUDES PENDIENTES -->
     <div class="card compact-card">
@@ -2282,6 +2349,160 @@
             (u.username || '').toLowerCase().includes(q)
         ));
     }
+</script>
+
+<script>
+(function () {
+  'use strict';
+  const TITULOS = {
+    jugada_extraordinaria: '🎲 Jugada extraordinaria',
+    aviso_general: '📢 Aviso del club',
+    cambio_horario: '🕒 Cambio de horario'
+  };
+  const porId = id => document.getElementById(id);
+  const texto = (id, valor) => { const nodo = porId(id); if (nodo) nodo.textContent = valor; };
+  let envioId = null;
+  let enviando = false;
+  let tituloAutomatico = true;
+
+  function actualizarPreview() {
+    texto('aviso-preview-titulo', porId('aviso-titulo').value.trim() || 'Título del aviso');
+    texto('aviso-preview-mensaje', porId('aviso-mensaje').value.trim() || 'Escribe el mensaje que recibirán los jugadores.');
+  }
+
+  async function cargarDestinatarios() {
+    const db = window.supabaseClient;
+    if (!db) return;
+    const { count, error } = await db.from('perfiles')
+      .select('id', { count: 'exact', head: true })
+      .eq('estado', 'aprobado')
+      .in('rol', ['jugador', 'admin', 'super_admin'])
+      .not('auth_user_id', 'is', null);
+    texto('aviso-destinatarios', error
+      ? 'El servidor comprobará los destinatarios antes de enviar.'
+      : `Destinatarios actuales: ${count ?? 0} perfiles aprobados.`);
+  }
+
+  async function cargarHistorial() {
+    const db = window.supabaseClient;
+    const lista = porId('aviso-historial');
+    if (!db || !lista) return;
+    const { data, error } = await db.from('admin_avisos_envios')
+      .select('tipo,titulo,mensaje,destinatarios,creado_en')
+      .order('creado_en', { ascending: false })
+      .limit(6);
+    lista.replaceChildren();
+    if (error) {
+      lista.textContent = 'No se pudo consultar el historial de avisos.';
+      return;
+    }
+    if (!data?.length) {
+      lista.textContent = 'Todavía no hay avisos manuales enviados.';
+      return;
+    }
+    for (const aviso of data) {
+      const fila = document.createElement('div');
+      fila.className = 'aviso-historial-fila';
+      const nombre = document.createElement('strong');
+      nombre.textContent = aviso.titulo || 'Aviso';
+      const info = document.createElement('small');
+      const fecha = new Intl.DateTimeFormat('es-DO', {
+        dateStyle: 'medium', timeStyle: 'short', timeZone: 'America/Santo_Domingo'
+      }).format(new Date(aviso.creado_en));
+      info.textContent = `${fecha} · ${aviso.destinatarios} destinatarios`;
+      fila.append(nombre, info);
+      lista.appendChild(fila);
+    }
+  }
+
+  async function enviar(event) {
+    event.preventDefault();
+    if (enviando) return;
+    const db = window.supabaseClient;
+    if (!db) {
+      texto('aviso-estado', 'Sin conexión con Supabase. Comprueba la sesión.');
+      porId('aviso-estado').dataset.estado = 'error';
+      return;
+    }
+    const tipo = porId('aviso-tipo').value;
+    const titulo = porId('aviso-titulo').value.trim();
+    const mensaje = porId('aviso-mensaje').value.trim();
+    if (!TITULOS[tipo] || titulo.length < 5 || titulo.length > 90 ||
+        mensaje.length < 10 || mensaje.length > 500) {
+      porId('aviso-estado').dataset.estado = 'error';
+      texto('aviso-estado', 'Revisa el título y el mensaje antes de enviar.');
+      return;
+    }
+
+    if (!window.confirm(`¿Enviar esta notificación a todos los jugadores aprobados?\n\n${titulo}\n\n${mensaje}\n\nEsta acción enviará notificaciones reales y no se puede deshacer.`)) {
+      return;
+    }
+    envioId = envioId || window.crypto?.randomUUID?.();
+    if (!envioId) {
+      porId('aviso-estado').dataset.estado = 'error';
+      texto('aviso-estado', 'Este navegador no permite generar un identificador seguro de envío.');
+      return;
+    }
+
+    enviando = true;
+    const boton = porId('aviso-enviar');
+    boton.disabled = true;
+    boton.textContent = 'Enviando...';
+    porId('aviso-estado').dataset.estado = '';
+    texto('aviso-estado', 'Guardando la convocatoria...');
+    try {
+      const { data, error } = await db.rpc('admin_publicar_aviso', {
+        p_envio_id: envioId, p_tipo: tipo, p_titulo: titulo, p_mensaje: mensaje
+      });
+      if (error) throw error;
+      porId('aviso-estado').dataset.estado = 'ok';
+      texto('aviso-estado',
+        `Aviso guardado para ${data?.destinatarios ?? 0} perfiles. ` +
+        (data?.duplicado ? 'Se evitó un envío duplicado. ' : '') +
+        'La entrega Push depende de los permisos y la conexión de cada dispositivo.');
+      envioId = null;
+      porId('aviso-mensaje').value = '';
+      actualizarPreview();
+      await Promise.allSettled([cargarHistorial(), cargarDestinatarios()]);
+    } catch (error) {
+      porId('aviso-estado').dataset.estado = 'error';
+      texto('aviso-estado', 'No se pudo confirmar el envío: ' +
+        (error?.message || 'error desconocido') +
+        '. Si hubo un corte de conexión, reintenta sin modificar el mensaje para evitar duplicados.');
+    } finally {
+      enviando = false;
+      boton.disabled = false;
+      boton.textContent = '📣 Enviar a los jugadores';
+    }
+  }
+
+  function iniciar() {
+    const form = porId('form-admin-aviso');
+    if (!form) return;
+    const tipo = porId('aviso-tipo');
+    const titulo = porId('aviso-titulo');
+    const mensaje = porId('aviso-mensaje');
+
+    tipo.addEventListener('change', () => {
+      if (tituloAutomatico) titulo.value = TITULOS[tipo.value];
+      envioId = null;
+      actualizarPreview();
+    });
+    titulo.addEventListener('input', () => {
+      tituloAutomatico = false; envioId = null; actualizarPreview();
+    });
+    mensaje.addEventListener('input', () => {
+      envioId = null; actualizarPreview();
+    });
+    form.addEventListener('submit', enviar);
+    actualizarPreview();
+    cargarDestinatarios().catch(console.warn);
+    cargarHistorial().catch(console.warn);
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', iniciar, { once: true });
+  } else iniciar();
+})();
 </script>
 </body>
 </html>
