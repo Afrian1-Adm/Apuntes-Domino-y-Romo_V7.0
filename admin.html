@@ -1096,7 +1096,14 @@
 
     function mostrarAdminDesdeCache() {
         document.getElementById('admin-content')?.removeAttribute('hidden');
-        renderizarMesasActivasLocales();
+        // Las mesas del caché pueden haber sido cerradas en otro dispositivo.
+        // Nunca mostrar una mesa como activa sin confirmar su estado actual.
+        const listaMesas = document.getElementById('lista-mesas');
+        if (listaMesas) {
+            listaMesas.textContent = navigator.onLine === false
+                ? 'Sin conexión: no se puede verificar qué mesas están abiertas.'
+                : 'Comprobando mesas activas con el servidor...';
+        }
         renderizarSolicitudesLocales();
         renderizarHistorialLocal();
         renderizarUsuariosLocales();
@@ -1437,7 +1444,7 @@
         const mesasActivas = mesas.filter(m => {
             let limiteMeta = m.limite_puntos || 200;
             let pts = puntosPorMesa[m.id] || { pts1: 0, pts2: 0 };
-            return pts.pts1 < limiteMeta && pts.pts2 < limiteMeta;
+            return m.estado === 'abierta' && pts.pts1 < limiteMeta && pts.pts2 < limiteMeta;
         });
 
         cachePuntosMesas = puntosPorMesa;
