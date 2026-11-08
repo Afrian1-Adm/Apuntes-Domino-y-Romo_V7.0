@@ -139,7 +139,9 @@
                 const mesas = mesasRes.data || [];
                 const resumenes = resumenRes.data || [];
                 const finalizadas = new Set(resumenes.map(r => r.mesa_id));
-                const candidatas = mesas.filter(m => !finalizadas.has(m.id));
+                // La puntuación incompleta no significa que una mesa siga abierta.
+                // Solo el estado persistido en Supabase determina si está activa.
+                const candidatas = mesas.filter(m => m.estado === 'abierta' && !finalizadas.has(m.id));
                 const manos = await cargarManosPorMesas(cliente, candidatas.map(m => m.id));
 
                 const puntosPorMesa = {};
