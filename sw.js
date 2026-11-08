@@ -1,5 +1,5 @@
-const CORE_CACHE = 'club-domino-core-v98';
-const RUNTIME_CACHE = 'club-domino-runtime-v98';
+const CORE_CACHE = 'club-domino-core-v99';
+const RUNTIME_CACHE = 'club-domino-runtime-v99';
 
 const SUPABASE_SDK_URL = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';
 

@@ -2810,6 +2810,45 @@
 
 
 
+
+    // ==========================================================
+    // AVISOS MANUALES DEL ADMINISTRADOR
+    // ==========================================================
+
+    function procesarAvisoManual(registro) {
+        if (!registro || !String(registro.tipo || '').startsWith('aviso_manual_')) return;
+        if (!perfil || registro.destinatario_id !== perfil.id) return;
+        emitir({
+            key: 'aviso-manual:' + registro.id,
+            tipo: 'aviso_manual',
+            icono: registro.tipo === 'aviso_manual_jugada_extraordinaria' ? '🎲' : '📣',
+            titulo: String(registro.titulo || 'Aviso del club'),
+            mensaje: String(registro.mensaje || ''),
+            // Las convocatorias manuales solo enlazan al lobby.
+            url: 'lobby.html',
+            duracion: 12000
+        }).catch(error => console.warn('[AVISOS] Error al presentar convocatoria:', error));
+    }
+
+    async function cargarAvisosManuales() {
+        if (!db || !perfil || !avisosActivos()) return;
+        // Recupera convocatorias recientes aunque el móvil estuviera cerrado.
+        const desde = new Date(Date.now() - 7 * 86400000).toISOString();
+        const { data, error } = await db
+            .from('app_notificaciones')
+            .select('id,destinatario_id,tipo,titulo,mensaje,created_at')
+            .eq('destinatario_id', perfil.id)
+            .like('tipo', 'aviso_manual_%')
+            .gte('created_at', desde)
+            .order('created_at', { ascending: false })
+            .limit(10);
+        if (error) {
+            console.warn('[AVISOS] No se pudo recuperar las convocatorias:', error);
+            return;
+        }
+        (data || []).reverse().forEach(procesarAvisoManual);
+    }
+
     // ==========================================================
     // REALTIME
     // ==========================================================
@@ -2921,6 +2960,17 @@
 
                 )
 
+
+                .on(
+                    'postgres_changes',
+                    {
+                        event: 'INSERT',
+                        schema: 'public',
+                        table: 'app_notificaciones',
+                        filter: 'destinatario_id=eq.' + perfil.id
+                    },
+                    payload => procesarAvisoManual(payload.new)
+                )
 
                 .subscribe(
                     status => {
@@ -3638,6 +3688,10 @@
 
             conectarRealtime();
 
+            cargarAvisosManuales().catch(error =>
+                console.warn('[AVISOS] Error recuperando avisos manuales:', error)
+            );
+
             revisarJueves();
 
 
@@ -3908,6 +3962,10 @@
 
             conectarRealtime();
 
+            cargarAvisosManuales().catch(error =>
+                console.warn('[AVISOS] Error recuperando avisos manuales:', error)
+            );
+
             revisarJueves();
 
 
@@ -4122,6 +4180,7 @@
         () => {
             if (document.visibilityState === 'visible') {
                 reconciliarPushCelular(false);
+                cargarAvisosManuales().catch(() => {});
             }
         },
         { passive: true }
@@ -4132,6 +4191,7 @@
         'pageshow',
         () => {
             reconciliarPushCelular(false);
+            cargarAvisosManuales().catch(() => {});
         },
         { passive: true }
     );
