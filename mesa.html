@@ -686,6 +686,7 @@
     var perfilActualMesaCargado = false;
     var temporizadorIdentidadMesa = null;
     var escuchaAuthMesaInstalada = false;
+    var restaurandoHandoffMesa = false;
     var juegoFinalizado = false;
     var sincronizandoManos = false;
     var guardandoMano = false;
@@ -1351,10 +1352,16 @@
             if (!vigente || !respaldo?.user_id ||
                 !respaldo?.access_token || !respaldo?.refresh_token) return null;
 
-            const resultado = await sbClient.auth.setSession({
-                access_token: respaldo.access_token,
-                refresh_token: respaldo.refresh_token
-            });
+            restaurandoHandoffMesa = true;
+            let resultado;
+            try {
+                resultado = await sbClient.auth.setSession({
+                    access_token: respaldo.access_token,
+                    refresh_token: respaldo.refresh_token
+                });
+            } finally {
+                restaurandoHandoffMesa = false;
+            }
             if (resultado.error) throw resultado.error;
             const restaurada = resultado?.data?.session || null;
             if (restaurada?.user?.id !== respaldo.user_id) {
@@ -1375,6 +1382,8 @@
         escuchaAuthMesaInstalada = true;
         sbClient.auth.onAuthStateChange((evento) => {
             if (!['SIGNED_IN', 'SIGNED_OUT', 'TOKEN_REFRESHED', 'USER_UPDATED'].includes(evento)) return;
+            // setSession al restaurar el handoff no debe provocar recargas infinitas.
+            if (evento === 'SIGNED_IN' && restaurandoHandoffMesa) return;
             perfilActualMesaCargado = false;
             perfilActualMesa = null;
             if (evento === 'SIGNED_OUT') {
