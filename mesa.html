@@ -684,6 +684,8 @@
     var puedeGestionarMesa = false;
     var perfilActualMesa = null;
     var perfilActualMesaCargado = false;
+    var temporizadorIdentidadMesa = null;
+    var escuchaAuthMesaInstalada = false;
     var juegoFinalizado = false;
     var sincronizandoManos = false;
     var guardandoMano = false;
@@ -858,6 +860,7 @@
 
             if (!mesaId) return;
 
+            registrarEscuchaAuthMesa();
             window.addEventListener('online', manejarConexionRestauradaMesa);
 
             // Al volver a la app desde segundo plano, algunos móviles han suspendido
@@ -1117,6 +1120,9 @@
         try {
             const clienteDisponible = await asegurarClienteSupabaseMesa();
             if (!clienteDisponible) return;
+            // Revalidar identidad y permisos cuando vuelve la conexión.
+            perfilActualMesaCargado = false;
+            perfilActualMesa = null;
             await cargarMesa();
             await intentarSincronizacionPendiente();
 
@@ -1321,16 +1327,78 @@
     }
 
 
-    async function obtenerPerfilActualMesa() {
-        if (perfilActualMesaCargado) return perfilActualMesa;
-
-        perfilActualMesaCargado = true;
+    // Reutiliza el respaldo de sesión entre login y lobby. En ciertos celulares
+    // localStorage no persiste al cambiar de pantalla, aunque Supabase permita
+    // consultar el marcador público. Solo un JWT restaurado y el perfil consultado
+    // en Supabase habilitan a escribir manos: nunca el perfil/caché del lobby.
+    async function obtenerSesionMesa() {
+        let session = null;
+        try {
+            const resultado = await sbClient.auth.getSession();
+            session = resultado?.data?.session || null;
+        } catch (error) {
+            console.warn('[MESA] No se pudo leer sesión local:', error);
+        }
+        if (session?.user?.id) return session;
 
         try {
-            const { data: { session } } = await sbClient.auth.getSession();
+            const raw = sessionStorage.getItem('domino_auth_handoff_v1');
+            const respaldo = raw ? JSON.parse(raw) : null;
+            const vigente = Number.isFinite(Number(respaldo?.created_at))
+                && Date.now() - Number(respaldo.created_at) >= 0
+                && Date.now() - Number(respaldo.created_at) < 15 * 60 * 1000;
+            if (!vigente || !respaldo?.user_id ||
+                !respaldo?.access_token || !respaldo?.refresh_token) return null;
 
-            if (!session?.user) {
+            const resultado = await sbClient.auth.setSession({
+                access_token: respaldo.access_token,
+                refresh_token: respaldo.refresh_token
+            });
+            if (resultado.error) throw resultado.error;
+            const restaurada = resultado?.data?.session || null;
+            if (restaurada?.user?.id !== respaldo.user_id) {
+                console.warn('[MESA] La sesión recuperada no coincide con el usuario anterior.');
+                return null;
+            }
+            return restaurada;
+        } catch (error) {
+            console.warn('[MESA] No se pudo restaurar la sesión de esta PWA:', error);
+            return null;
+        }
+    }
+
+    // En auth.onAuthStateChange no hacer consultas asincrónicas directamente:
+    // diferirlas evita un bloqueo conocido del cliente de Supabase.
+    function registrarEscuchaAuthMesa() {
+        if (!sbClient || escuchaAuthMesaInstalada) return;
+        escuchaAuthMesaInstalada = true;
+        sbClient.auth.onAuthStateChange((evento) => {
+            if (!['SIGNED_IN', 'SIGNED_OUT', 'TOKEN_REFRESHED', 'USER_UPDATED'].includes(evento)) return;
+            perfilActualMesaCargado = false;
+            perfilActualMesa = null;
+            if (evento === 'SIGNED_OUT') {
+                esJugadorDeMesa = false;
+                esSuperAdminMesa = false;
+                puedeGestionarMesa = false;
+            }
+            if (temporizadorIdentidadMesa) clearTimeout(temporizadorIdentidadMesa);
+            temporizadorIdentidadMesa = setTimeout(() => {
+                temporizadorIdentidadMesa = null;
+                if (navigator.onLine && mesaId) cargarMesa().catch(console.warn);
+            }, 90);
+        });
+    }
+
+    async function obtenerPerfilActualMesa() {
+        if (perfilActualMesaCargado && perfilActualMesa) return perfilActualMesa;
+
+        try {
+            const session = await obtenerSesionMesa();
+            if (!session?.user?.id) {
+                // No conservar un resultado negativo: la sesión puede recuperarse
+                // cuando termine el handoff o al volver de segundo plano.
                 perfilActualMesa = null;
+                perfilActualMesaCargado = false;
                 return null;
             }
 
@@ -1340,20 +1408,43 @@
                 .eq('auth_user_id', session.user.id)
                 .maybeSingle();
 
-            if (error) {
-                console.warn('No se pudo resolver el perfil actual:', error);
+            if (error || !p) {
+                if (error) console.warn('[MESA] No se pudo resolver el perfil:', error);
                 perfilActualMesa = null;
+                perfilActualMesaCargado = false;
                 return null;
             }
 
-            perfilActualMesa = p || null;
-            return perfilActualMesa;
+            perfilActualMesa = p;
+            perfilActualMesaCargado = true;
+            return p;
 
         } catch (error) {
-            console.warn('No se pudo resolver el perfil actual:', error);
+            console.warn('[MESA] Error validando identidad:', error);
             perfilActualMesa = null;
+            perfilActualMesaCargado = false;
             return null;
         }
+    }
+
+    // Respaldo visual: los nombres cacheados nunca autorizan a anotar puntos.
+    function nombresJugadoresDesdeCacheMesa() {
+        const mapa = {};
+        try {
+            const datos = JSON.parse(localStorage.getItem('cache_index_general_datos') || 'null');
+            for (const jugador of (Array.isArray(datos?.perfiles) ? datos.perfiles : [])) {
+                if (jugador?.id) mapa[jugador.id] = jugador.username || jugador.nombre_completo || '';
+            }
+        } catch (_) {}
+        try {
+            const usuarios = JSON.parse(localStorage.getItem('domino_cache_perfiles') || 'null');
+            if (usuarios && typeof usuarios === 'object' && !Array.isArray(usuarios)) {
+                for (const [id, nombre] of Object.entries(usuarios)) {
+                    if (!mapa[id] && typeof nombre === 'string') mapa[id] = nombre;
+                }
+            }
+        } catch (_) {}
+        return mapa;
     }
 
     let secuenciaCargaMesa = 0;
@@ -1430,11 +1521,14 @@
             const listaJugadores = [mesa.jugador1_id, mesa.jugador2_id, mesa.jugador3_id, mesa.jugador4_id].filter(Boolean);
             if (listaJugadores.length > 0) {
                 // AQUÍ SE TOMA EL USERNAME (con respaldo a nombre_completo si estuviera vacío)
-                const { data: perfilesData } = await sbClient
+                const { data: perfilesData, error: errorPerfiles } = await sbClient
                     .from('perfiles')
                     .select('id, username, nombre_completo')
                     .in('id', listaJugadores);
-                perfiles = perfilesData;
+                if (errorPerfiles) {
+                    console.warn('[MESA] No se pudieron cargar los nombres:', errorPerfiles);
+                }
+                perfiles = errorPerfiles ? null : perfilesData;
             }
         } catch (err) {
             console.warn("Modo offline: Cargando datos y manos previas desde caché local...", err.message);
@@ -1455,7 +1549,8 @@
         if (mesa) {
             limitePuntos = mesa.limite_puntos || 200;
             listaJugadores = [mesa.jugador1_id, mesa.jugador2_id, mesa.jugador3_id, mesa.jugador4_id].filter(Boolean);
-            if (currentPerfilId) esJugadorDeMesa = listaJugadores.includes(currentPerfilId);
+            // Sin perfil confirmado, jamás conservar permisos de un caché anterior.
+            esJugadorDeMesa = Boolean(currentPerfilId && listaJugadores.includes(currentPerfilId));
             puedeGestionarMesa = esJugadorDeMesa || esSuperAdminMesa;
         } else {
             const cachedMesa = localStorage.getItem(cacheKey);
@@ -1477,17 +1572,17 @@
         let p1Texto = 'Pareja 1';
         let p2Texto = 'Pareja 2';
 
-        if (perfiles && mesa) {
-            const map = {};
-            perfiles.forEach(p => {
-                // Prioriza el 'username' y usa 'nombre_completo' o 'Jugador' como respaldo
+        if (mesa) {
+            const map = nombresJugadoresDesdeCacheMesa();
+            (perfiles || []).forEach(p => {
+                // Los nombres del servidor tienen prioridad sobre el caché visual.
                 map[p.id] = p.username || (p.nombre_completo ? p.nombre_completo.split(' ')[0] : 'Jugador');
             });
-            
-            nombresJugadoresMesa.j1 = map[mesa.jugador1_id] || 'J1';
-            nombresJugadoresMesa.j2 = map[mesa.jugador2_id] || 'J2';
-            nombresJugadoresMesa.j3 = map[mesa.jugador3_id] || 'J3';
-            nombresJugadoresMesa.j4 = map[mesa.jugador4_id] || 'J4';
+
+            nombresJugadoresMesa.j1 = map[mesa.jugador1_id] || 'Jugador 1';
+            nombresJugadoresMesa.j2 = map[mesa.jugador2_id] || 'Jugador 2';
+            nombresJugadoresMesa.j3 = map[mesa.jugador3_id] || 'Jugador 3';
+            nombresJugadoresMesa.j4 = map[mesa.jugador4_id] || 'Jugador 4';
 
             p1Texto = `${nombresJugadoresMesa.j1} / ${nombresJugadoresMesa.j3}`;
             p2Texto = `${nombresJugadoresMesa.j2} / ${nombresJugadoresMesa.j4}`;
@@ -1685,7 +1780,9 @@
             cardAnotar.classList.add('hidden');
 
             if (!puedeGestionarMesa) {
-                spectatorBox.textContent = '👁️ Modo Espectador: Solo los jugadores de esta mesa o un SUPER_ADMIN pueden anotar puntos.';
+                spectatorBox.textContent = !currentPerfilId && navigator.onLine
+                    ? '🔐 Sesión sin validar: no se pudo identificar tu perfil. Vuelve al Lobby y entra nuevamente a la mesa. Las manos guardadas no se perderán.'
+                    : '👁️ Modo Espectador: Solo los jugadores de esta mesa o un SUPER_ADMIN pueden anotar puntos.';
                 spectatorBox.classList.remove('hidden');
             } else {
                 spectatorBox.classList.add('hidden');
@@ -2037,6 +2134,7 @@
         if (reintentoRealtimeMesa) clearTimeout(reintentoRealtimeMesa);
         if (temporizadorCargaRealtimeMesa) clearTimeout(temporizadorCargaRealtimeMesa);
         if (temporizadorAvisoCambioRemoto) clearTimeout(temporizadorAvisoCambioRemoto);
+        if (temporizadorIdentidadMesa) clearTimeout(temporizadorIdentidadMesa);
         limpiarCanalRealtimeMesa();
     });
 
