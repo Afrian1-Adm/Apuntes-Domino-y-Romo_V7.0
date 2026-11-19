@@ -914,6 +914,7 @@
             </div>
             <span class="page-pill">📊 Estadísticas</span>
         </header>
+        <p id="consultas-estado" class="section-description" role="status" aria-live="polite">Cargando estadísticas del club…</p>
 
         <main class="consultas-grid">
 
@@ -924,7 +925,7 @@
                 <h3>Perfil y Galardones del Jugador</h3>
             </div>
             <p class="section-description">
-                Selecciona un jugador para consultar sus métricas directamente desde las vistas de la base de datos.
+                Consulta su historial individual completo y sus galardones calculados con partidas detalladas.
             </p>
             <div class="profile-selector">
                 <select id="select-jugador-filtro" class="field-control" aria-label="Seleccionar jugador para consultar" onchange="consultarPerfilJugador()">
@@ -933,6 +934,7 @@
             </div>
 
             <div id="resultado-perfil-jugador" class="profile-results" style="display: none;">
+                <p id="val-historial-origen" class="section-description" role="status"></p>
                 
                 <!-- Insignias y Condecoraciones -->
                 <div>
@@ -982,7 +984,7 @@
                     <div class="metric-card">
                         <div class="metric-label">⭐ Jugador del Mes</div>
                         <div id="val-jugador-mes" class="metric-value">0</div>
-                        <div class="metric-detail">Veces obt.</div>
+                        <div class="metric-detail">Veces obt. desde septiembre</div>
                     </div>
                     <!-- Tarjeta Balance de Lisas -->
                     <div class="metric-card">
@@ -1253,36 +1255,27 @@
     }
 
 
-        function obtenerVentanaOnFireConsulta(referencia = new Date()) {
+    
+    function obtenerVentanaOnFireConsulta(referencia = new Date()) {
         const ahora = new Date(referencia);
         const inicio = new Date(ahora);
+        // Jornada oficial: jueves completo + viernes completo, sin límite horario.
         const diasDesdeJueves = (ahora.getDay() - 4 + 7) % 7;
         inicio.setDate(ahora.getDate() - diasDesdeJueves);
-        inicio.setHours(8, 0, 0, 0);
-        if (ahora < inicio) inicio.setDate(inicio.getDate() - 7);
-
+        inicio.setHours(0, 0, 0, 0);
         const fin = new Date(inicio);
-        fin.setDate(fin.getDate() + 1);
-        fin.setHours(6, 0, 0, 0);
+        fin.setDate(fin.getDate() + 2);
         return { inicio, fin };
     }
 
     function obtenerInicioPeriodoOnFire(fechaValor) {
         const fecha = new Date(fechaValor);
         if (Number.isNaN(fecha.getTime())) return null;
-        const minutos = fecha.getHours() * 60 + fecha.getMinutes();
+        if (![4,5].includes(fecha.getDay())) return null;
         const inicio = new Date(fecha);
-
-        if (fecha.getDay() === 4 && minutos >= 8 * 60) {
-            inicio.setHours(8, 0, 0, 0);
-            return inicio;
-        }
-        if (fecha.getDay() === 5 && minutos < 6 * 60) {
-            inicio.setDate(inicio.getDate() - 1);
-            inicio.setHours(8, 0, 0, 0);
-            return inicio;
-        }
-        return null;
+        if (fecha.getDay() === 5) inicio.setDate(inicio.getDate() - 1);
+        inicio.setHours(0, 0, 0, 0);
+        return inicio;
     }
 
     function calcularHistorialOnFire(partidas, jugadorId, referencia = new Date()) {
@@ -1353,35 +1346,34 @@
     }
 
 
+
     function calcularRankingActualComoPerfil(perfiles, jugadorId) {
-        const rankingGlobal = {};
-        obtenerPartidasAgrupadas().forEach(partida => {
-            partida.t1.forEach(id => {
-                if (!rankingGlobal[id]) rankingGlobal[id] = { jugadas: 0, ganadas: 0 };
-                rankingGlobal[id].jugadas++;
-                if (partida.ganador === 1) rankingGlobal[id].ganadas++;
-            });
-
-            partida.t2.forEach(id => {
-                if (!rankingGlobal[id]) rankingGlobal[id] = { jugadas: 0, ganadas: 0 };
-                rankingGlobal[id].jugadas++;
-                if (partida.ganador === 2) rankingGlobal[id].ganadas++;
-            });
-        });
-
-        const listaRanking = Object.keys(rankingGlobal)
-            .map(id => {
-                const data = rankingGlobal[id];
-                const ef = data.jugadas > 0 ? data.ganadas / data.jugadas : 0;
-                return { id, ganadas: data.ganadas, jugadas: data.jugadas, ef };
-            })
-            .sort((a, b) => b.ef - a.ef || b.jugadas - a.jugadas || b.ganadas - a.ganadas);
-
-        const posicion = listaRanking.findIndex(item => item.id === jugadorId);
-        return {
-            posicion: posicion !== -1 ? posicion + 1 : null,
-            total: listaRanking.length
+        const rankingGlobal = new Map();
+        const incluir = (id, jugadas, ganadas) => {
+            if (!id) return;
+            if (!rankingGlobal.has(id)) rankingGlobal.set(id, { jugadas:0, ganadas:0 });
+            const estadistica = rankingGlobal.get(id);
+            estadistica.jugadas += Number(jugadas) || 0;
+            estadistica.ganadas += Number(ganadas) || 0;
         };
+        obtenerResumenHistoricoConsultas().forEach((r,id) => {
+            incluir(id, r.partidas, r.ganadas);
+        });
+        obtenerPartidasAgrupadas().forEach(partida => {
+            partida.t1.forEach(id => incluir(id, 1, partida.ganador === 1 ? 1 : 0));
+            partida.t2.forEach(id => incluir(id, 1, partida.ganador === 2 ? 1 : 0));
+        });
+        const aptos = new Set(perfiles.filter(p => p.rol !== 'invitado').map(p => p.id));
+        const listaRanking = [...rankingGlobal.entries()]
+            .filter(([id, r]) => aptos.has(id) && r.jugadas > 0)
+            .map(([id, data]) => ({
+                id, ganadas:data.ganadas, jugadas:data.jugadas,
+                ef:data.ganadas / data.jugadas
+            }))
+            .sort((a,b) => b.ef - a.ef || b.jugadas - a.jugadas ||
+                b.ganadas - a.ganadas || a.id.localeCompare(b.id));
+        const posicion = listaRanking.findIndex(item => item.id === jugadorId);
+        return { posicion: posicion >= 0 ? posicion + 1 : null, total:listaRanking.length };
     }
 
     function consultarPerfilJugador() {
@@ -1403,9 +1395,14 @@
         const rankingActual = calcularRankingActualComoPerfil(perfiles, jugadorId);
         let posicionRanking = rankingActual.posicion;
 
-        let totalPartidas = 0;
-        let victorias = 0;
-        let derrotas = 0;
+        // Enero-agosto conserva resultados individuales por día (sin parejas).
+        // Sumarlos a septiembre en adelante evita que el perfil muestre
+        // partidas ganadas/perdidas inferiores al ranking histórico.
+        const legacy = obtenerResumenHistoricoConsultas().get(jugadorId) ||
+            { partidas:0, ganadas:0, perdidas:0 };
+        let totalPartidas = legacy.partidas;
+        let victorias = legacy.ganadas;
+        let derrotas = legacy.perdidas;
         let lisasFavor = 0;
         let lisasContra = 0;
         let frentesMap = {}; 
@@ -1504,6 +1501,13 @@
                 : 'Aún no hay partidas finalizadas';
         }
 
+        const detalleHistorico = document.getElementById('val-historial-origen');
+        if (detalleHistorico) {
+            detalleHistorico.textContent =
+                'Historial: ' + legacy.partidas + ' partidas anteriores + ' +
+                (totalPartidas - legacy.partidas) + ' partidas detalladas. ' +
+                'Rachas, lisas, premios y rivales requieren partidas con integrantes identificados.';
+        }
         let porcentajeGral = totalPartidas > 0 ? ((victorias / totalPartidas) * 100).toFixed(1) : 0;
         const elEfectividadGral = document.getElementById('val-efectividad-gral');
         const elEfectividadDetalle = document.getElementById('val-efectividad-detalle');
