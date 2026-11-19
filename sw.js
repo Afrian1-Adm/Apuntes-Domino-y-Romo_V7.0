@@ -1,5 +1,5 @@
-const CORE_CACHE = 'club-domino-core-v102';
-const RUNTIME_CACHE = 'club-domino-runtime-v102';
+const CORE_CACHE = 'club-domino-core-v103';
+const RUNTIME_CACHE = 'club-domino-runtime-v103';
 
 const SUPABASE_SDK_URL = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';
 
@@ -430,7 +430,11 @@ self.addEventListener('fetch', event => {
 
     if (esRecursoActualizable(request, url)) {
         event.respondWith((async () => {
-            const response = await cacheFirstApp(request, event);
+            // Nunca servir una página HTML obsoleta si el servidor responde.
+            // Los recursos JS/CSS siguen usando caché con revalidación.
+            const response = esHTML(request, url)
+                ? await networkFirst(request)
+                : await cacheFirstApp(request, event);
             if (!esHTML(request, url)) return response;
             const conRuntimeMesa = await inyectarRuntimeMesa(response, url);
             const conRuntimeResumen = await inyectarRuntimeResumen(conRuntimeMesa, url);
