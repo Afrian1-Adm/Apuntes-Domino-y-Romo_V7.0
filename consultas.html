@@ -912,9 +912,9 @@
                     <p>Análisis avanzado, ELO, rangos y enfrentamientos</p>
                 </div>
             </div>
-            <span class="page-pill">📊 Estadísticas</span>
+            <span class="page-pill">📊 Consultas · v103</span>
         </header>
-        <p id="consultas-estado" class="section-description" role="status" aria-live="polite">Cargando estadísticas del club…</p>
+        <p id="consultas-estado" class="section-description" role="status" aria-live="polite">Consultas v103 · Cargando estadísticas del club…</p>
 
         <main class="consultas-grid">
 
@@ -1074,7 +1074,7 @@
 
     // Fuente oficial: resultados consolidados. La tabla de manos se utiliza para
     // anotar, pero no debe descargarse sin paginar ni reconstruirse por cada consulta.
-    const CONSULTAS_CACHE_KEY = 'cache_consultas_resumen_v4';
+    const CONSULTAS_CACHE_KEY = 'cache_consultas_resumen_v5';
     let consultasCargadas = false;
     let consultasActualizando = false;
 
@@ -1111,7 +1111,7 @@
 
     function informarFuenteConsultas(mensaje) {
         const elemento = document.getElementById('consultas-estado');
-        if (elemento) elemento.textContent = mensaje;
+        if (elemento) elemento.textContent = 'Consultas v103 · ' + mensaje;
     }
 
     function aplicarDatosConsultas(datos) {
