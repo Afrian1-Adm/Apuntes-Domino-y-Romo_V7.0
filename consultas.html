@@ -938,12 +938,12 @@
 
 
         <section class="card full-card" id="historial-total-club">
-            <div class="seccion-titulo"><span>📅</span><h3>Historial oficial desde el 8 de enero</h3></div>
-            <p class="section-description">Incluye los registros del club desde el 8 de enero de 2026. Hasta agosto se conservaron resultados por jugador y fecha; desde septiembre existen partidas detalladas por mesa.</p>
+            <div class="seccion-titulo"><span>📅</span><h3>Historial completo desde el 8 de enero</h3></div>
+            <p class="section-description">Incluye todas las partidas disponibles desde el 8 de enero de 2026. Los registros antiguos se muestran por jornada y los recientes por mesa. Las partidas fuera de la tabla general se distinguen sin alterar el ranking.</p>
             <div class="hist-total-grid">
-                <div class="hist-kpi"><strong id="hist-suma">—</strong><small>Partidas totales</small></div>
+                <div class="hist-kpi"><strong id="hist-suma">—</strong><small>Partidas registradas</small></div>
                 <div class="hist-kpi"><strong id="hist-antes">—</strong><small>Enero–agosto, acumuladas</small></div>
-                <div class="hist-kpi"><strong id="hist-ahora">—</strong><small>Septiembre en adelante, detalladas</small></div>
+                <div class="hist-kpi"><strong id="hist-ahora">—</strong><small>Septiembre en adelante, todas</small></div>
             </div>
             <p id="hist-cobertura" class="section-description" role="status">Cargando historial…</p>
             <div id="hist-meses" class="hist-meses"></div>
@@ -1390,7 +1390,22 @@
             registros.push({fecha,ts:Date.parse(fecha+'T12:00:00-04:00'),titulo:fecha+' · '+n+' partidas históricas',sub:'Acumulado de jornada: no se conservaron los integrantes de cada mesa.'});
         }
         const names=new Map((window._perfilesGlobal||[]).map(p=>[p.id,p.username||p.nombre_completo||'Jugador']));
-        const detalladas=obtenerPartidasAgrupadas().filter(p=>{
+        const oficiales=obtenerPartidasAgrupadas().map(p=>({...p,fueraRanking:false}));
+        // Partidas especiales, registradas pero excluidas expresamente de la
+        // Tabla General. Se muestran en el historial, no afectan la eficiencia.
+        const extraordinarias=(window._resumenGlobal||[])
+            .filter(r=>r.cuenta_tabla_general===false)
+            .map(r=>{
+                const f=new Date(r.fecha_final||0);
+                const jugadores=[r.jugador1_id,r.jugador2_id,r.jugador3_id,r.jugador4_id];
+                if(jugadores.some(id=>!id)||new Set(jugadores).size!==4||
+                    ![1,2].includes(Number(r.ganador))||Number.isNaN(f.getTime()))return null;
+                return { timestamp:f.getTime(), t1:[r.jugador1_id,r.jugador3_id],
+                    t2:[r.jugador2_id,r.jugador4_id],ganador:Number(r.ganador),
+                    pts1:Number(r.puntos_pareja1)||0,pts2:Number(r.puntos_pareja2)||0,
+                    fueraRanking:true };
+            }).filter(Boolean);
+        const detalladas=[...oficiales,...extraordinarias].filter(p=>{
             const f=obtenerFechaRDConsultas(p.timestamp);
             return f&&[f.year,String(f.month).padStart(2,'0'),String(f.day).padStart(2,'0')].join('-')>='2026-01-08';
         });
@@ -1400,10 +1415,10 @@
             addMes(fecha.slice(0,7),'detalladas',1);
             const equipo=ids=>ids.map(id=>names.get(id)||'Sin nombre').join(' y ');
             const hora=new Intl.DateTimeFormat('es-DO',{timeZone:'America/Santo_Domingo',timeStyle:'short'}).format(new Date(p.timestamp));
-            registros.push({fecha,ts:p.timestamp,titulo:fecha+' · '+equipo(p.t1)+' vs. '+equipo(p.t2),sub:'Ganó pareja '+p.ganador+' · '+p.pts1+'–'+p.pts2+' · '+hora});
+            registros.push({fecha,ts:p.timestamp,titulo:fecha+' · '+equipo(p.t1)+' vs. '+equipo(p.t2),sub:(p.fueraRanking?'Fuera de Tabla General · ':'Oficial · ')+'Ganó pareja '+p.ganador+' · '+p.pts1+'–'+p.pts2+' · '+hora});
         }
         registros.sort((a,b)=>b.ts-a.ts);
-        return {historicas,detalladas:detalladas.length,invalidas,dias:porDia.size,meses,registros};
+        return {historicas,detalladas:detalladas.length,noClasifican:detalladas.filter(p=>p.fueraRanking).length,invalidas,dias:porDia.size,meses,registros};
     }
     function renderHistorialClub(){
         if(!consultasCargadas)return;
@@ -1413,7 +1428,9 @@
         poner('hist-antes',n(d.historicas));poner('hist-ahora',n(d.detalladas));
         poner('hist-cobertura',d.invalidas>0
             ? '⚠ Se detectaron '+d.invalidas+' fechas históricas inconsistentes. No se inventaron resultados.'
-            : d.dias+' fechas históricas validadas. Todas las partidas cuentan en el historial individual y general. Los versus anteriores a septiembre no conservan rivales.');
+            : d.dias+' jornadas anteriores validadas · '+(d.historicas+d.detalladas-d.noClasifican)+
+              ' computan para la Tabla General y '+d.noClasifican+
+              ' partidas recientes se muestran aparte como no clasificables. Los versus antiguos no conservan rivales.');
         const orden=[...d.meses.entries()].sort((a,b)=>b[0].localeCompare(a[0]));
         const donde=document.getElementById('hist-meses');
         if(donde){
