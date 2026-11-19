@@ -912,9 +912,9 @@
                     <p>Análisis avanzado, ELO, rangos y enfrentamientos</p>
                 </div>
             </div>
-            <span class="page-pill">📊 Consultas · v103</span>
+            <span class="page-pill">📊 Consultas · v104</span>
         </header>
-        <p id="consultas-estado" class="section-description" role="status" aria-live="polite">Consultas v103 · Cargando estadísticas del club…</p>
+        <p id="consultas-estado" class="section-description" role="status" aria-live="polite">Consultas v104 · Cargando estadísticas del club…</p>
 
         <main class="consultas-grid">
 
@@ -927,6 +927,16 @@
             <p class="section-description">
                 Consulta su historial individual completo y sus galardones calculados con partidas detalladas.
             </p>
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:0 0 12px;">
+                <p id="consultas-integridad" role="status" aria-live="polite"
+                    style="margin:0;flex:1;min-width:190px;font-size:.82rem;color:var(--muted);line-height:1.5;">
+                    Cargando partidas recientes…
+                </p>
+                <button type="button" id="consultas-actualizar" class="btn secondary"
+                    onclick="actualizarConsultasManual()" style="padding:9px 12px;min-height:38px;">
+                    ↻ Actualizar datos
+                </button>
+            </div>
             <div class="profile-selector">
                 <select id="select-jugador-filtro" class="field-control" aria-label="Seleccionar jugador para consultar" onchange="consultarPerfilJugador()">
                     <option value="">Seleccionar jugador...</option>
@@ -1074,16 +1084,44 @@
 
     // Fuente oficial: resultados consolidados. La tabla de manos se utiliza para
     // anotar, pero no debe descargarse sin paginar ni reconstruirse por cada consulta.
-    const CONSULTAS_CACHE_KEY = 'cache_consultas_resumen_v5';
+    const CONSULTAS_CACHE_KEY = 'cache_consultas_resumen_v6';
     let consultasCargadas = false;
     let consultasActualizando = false;
+    let consultasClienteLectura = null;
 
-    async function descargarCompletoConsultas(tabla, columnas, ordenar) {
+    // Las estadísticas consolidadas e históricas tienen política SELECT pública.
+    // Separar este cliente de la sesión evita que un token caducado, bloqueado
+    // o con otra sesión en la PWA devuelva un conjunto incompleto de partidos.
+    // No se utiliza para operaciones de escritura ni para leer perfiles privados.
+    function obtenerClientePublicoConsultas() {
+        if (!consultasClienteLectura) {
+            consultasClienteLectura = window.supabase.createClient(
+                SUPABASE_URL, SUPABASE_ANON_KEY, {
+                    auth: {
+                        persistSession: false,
+                        autoRefreshToken: false,
+                        detectSessionInUrl: false
+                    }
+                }
+            );
+        }
+        return consultasClienteLectura;
+    }
+
+    function mostrarIntegridadConsultas(mensaje, error = false) {
+        const elemento = document.getElementById('consultas-integridad');
+        if (elemento) {
+            elemento.textContent = mensaje;
+            elemento.style.color = error ? 'var(--red)' : 'var(--muted)';
+        }
+    }
+
+    async function descargarCompletoConsultas(tabla, columnas, ordenar, cliente = db) {
         const filas = [];
         const porPagina = 500;
         let offset = 0;
         while (true) {
-            let query = db.from(tabla).select(columnas);
+            let query = cliente.from(tabla).select(columnas);
             for (const campo of ordenar) {
                 query = query.order(campo, { ascending: true });
             }
@@ -1097,32 +1135,47 @@
     }
 
     async function obtenerDatosConsultas() {
+        const publico = obtenerClientePublicoConsultas();
         const [perfiles, resumen, historico] = await Promise.all([
             descargarCompletoConsultas('perfiles',
-                'id,username,nombre_completo,rol,estado,elo,es_manual', ['id']),
+                'id,username,nombre_completo,rol,estado,elo,es_manual', ['id'], db),
             descargarCompletoConsultas('partidas_resumen',
                 'mesa_id,fecha_final,jugador1_id,jugador2_id,jugador3_id,jugador4_id,cuenta_tabla_general,puntos_pareja1,puntos_pareja2,ganador,es_lisa,clutch_winner_team',
-                ['fecha_final','mesa_id']),
+                ['fecha_final','mesa_id'], publico),
             descargarCompletoConsultas('historial_legacy_ranking_diario',
-                'fecha,perfil_id,partidas,ganadas,perdidas', ['fecha','perfil_id'])
+                'fecha,perfil_id,partidas,ganadas,perdidas', ['fecha','perfil_id'], publico)
         ]);
+        if (resumen.length === 0) {
+            throw new Error('El servidor no devolvió partidas recientes. No se mostrarán ceros como resultados confirmados.');
+        }
         return { perfiles, resumen, historico, actualizadoEn: new Date().toISOString() };
     }
 
     function informarFuenteConsultas(mensaje) {
         const elemento = document.getElementById('consultas-estado');
-        if (elemento) elemento.textContent = 'Consultas v103 · ' + mensaje;
+        if (elemento) elemento.textContent = 'Consultas v104 · ' + mensaje;
     }
 
     function aplicarDatosConsultas(datos) {
         if (!Array.isArray(datos?.perfiles) || !Array.isArray(datos?.resumen) ||
-            !Array.isArray(datos?.historico)) return false;
+            !Array.isArray(datos?.historico) || datos.resumen.length === 0) {
+            return false; // Nunca tratar una caché sin partidos recientes como completa.
+        }
         window._perfilesGlobal = datos.perfiles;
         window._resumenGlobal = datos.resumen;
         window._historicoGlobal = datos.historico;
         consultasCargadas = true;
         inicializarSelectores(datos.perfiles);
-        informarFuenteConsultas('Datos oficiales de partidas cerradas. Historial individual desde enero; enfrentamientos identificables desde septiembre de 2026.');
+        const oficiales = datos.resumen.filter(p => p.cuenta_tabla_general !== false).length;
+        const fechaActualizacion = datos.actualizadoEn
+            ? new Intl.DateTimeFormat('es-DO', { timeZone:'America/Santo_Domingo', dateStyle:'short', timeStyle:'short' })
+                .format(new Date(datos.actualizadoEn))
+            : 'sin fecha';
+        mostrarIntegridadConsultas(
+            '✓ ' + oficiales + ' partidas oficiales detalladas cargadas · ' +
+            datos.historico.length + ' registros históricos · ' + fechaActualizacion
+        );
+        informarFuenteConsultas('Datos oficiales cargados. Historial individual desde enero; enfrentamientos identificables desde septiembre de 2026.');
         const seleccion = document.getElementById('select-jugador-filtro')?.value;
         if (seleccion) consultarPerfilJugador();
         if (document.getElementById('resultado-enfrentamiento-individual')?.dataset.consultado === '1') {
@@ -1134,32 +1187,49 @@
         return true;
     }
 
-    window.addEventListener('DOMContentLoaded', async () => {
-        let cacheDisponible = false;
-        try {
-            const cache = JSON.parse(localStorage.getItem(CONSULTAS_CACHE_KEY) || 'null');
-            cacheDisponible = aplicarDatosConsultas(cache);
-            if (cacheDisponible) informarFuenteConsultas('Cargando resultados actualizados del servidor…');
-        } catch (_) {}
-
-        if (navigator.onLine === false) {
-            if (!cacheDisponible) informarFuenteConsultas('Sin conexión: las consultas todavía no tienen datos descargados.');
-            return;
-        }
+    async function sincronizarConsultas(forzar = false) {
         if (consultasActualizando) return;
         consultasActualizando = true;
+        const boton = document.getElementById('consultas-actualizar');
+        if (boton) boton.disabled = true;
+        informarFuenteConsultas('Consultando datos oficiales en Supabase…');
+        mostrarIntegridadConsultas('Comprobando partidas recientes y registros históricos…');
         try {
             const datos = await obtenerDatosConsultas();
+            if (!aplicarDatosConsultas(datos)) throw new Error('Respuesta incompleta del servidor.');
             try { localStorage.setItem(CONSULTAS_CACHE_KEY, JSON.stringify(datos)); } catch (_) {}
-            aplicarDatosConsultas(datos);
         } catch (error) {
-            console.error('[CONSULTAS] No se pudo sincronizar:', error);
-            informarFuenteConsultas(cacheDisponible
-                ? 'Sincronización pendiente. Se muestran datos guardados anteriormente en este dispositivo.'
-                : 'No fue posible cargar las estadísticas. Comprueba la conexión y vuelve a abrir Consultas.');
+            console.error('[CONSULTAS v104] Error de carga oficial:', error);
+            const descripcion = String(error?.message || 'Error de conexión').slice(0, 180);
+            mostrarIntegridadConsultas(
+                '⚠ No se pudieron validar las partidas recientes: ' + descripcion +
+                '. Pulsa Actualizar datos.', true
+            );
+            informarFuenteConsultas('No se verificaron los datos recientes de Supabase.');
         } finally {
             consultasActualizando = false;
+            if (boton) boton.disabled = false;
         }
+    }
+
+    function actualizarConsultasManual() {
+        return sincronizarConsultas(true);
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+        try {
+            const cache = JSON.parse(localStorage.getItem(CONSULTAS_CACHE_KEY) || 'null');
+            if (aplicarDatosConsultas(cache)) {
+                informarFuenteConsultas('Comprobando datos actuales en segundo plano…');
+            } else {
+                mostrarIntegridadConsultas('Cargando partidas recientes desde Supabase…');
+            }
+        } catch (_) {
+            mostrarIntegridadConsultas('Cargando partidas recientes desde Supabase…');
+        }
+        // navigator.onLine puede informar "sin conexión" de forma incorrecta
+        // en Android/PWA. Siempre intentar lectura real, con error visible.
+        sincronizarConsultas();
     });
 
     function inicializarSelectores(perfiles) {
