@@ -1256,25 +1256,36 @@
 
 
     
+
+    function obtenerFechaRDConsultas(fechaValor) {
+        const fecha = new Date(fechaValor);
+        if (Number.isNaN(fecha.getTime())) return null;
+        const partes = new Intl.DateTimeFormat('en-US', {
+            timeZone: 'America/Santo_Domingo', year: 'numeric', month: '2-digit', day: '2-digit'
+        }).formatToParts(fecha);
+        const extraer = tipo => Number(partes.find(p => p.type === tipo)?.value || 0);
+        const year = extraer('year'), month = extraer('month'), day = extraer('day');
+        if (!year || !month || !day) return null;
+        const utc = new Date(Date.UTC(year, month - 1, day));
+        return { year, month, day, utc, weekday: utc.getUTCDay() };
+    }
+
     function obtenerVentanaOnFireConsulta(referencia = new Date()) {
-        const ahora = new Date(referencia);
-        const inicio = new Date(ahora);
-        // Jornada oficial: jueves completo + viernes completo, sin límite horario.
-        const diasDesdeJueves = (ahora.getDay() - 4 + 7) % 7;
-        inicio.setDate(ahora.getDate() - diasDesdeJueves);
-        inicio.setHours(0, 0, 0, 0);
+        const fechaRD = obtenerFechaRDConsultas(referencia);
+        if (!fechaRD) return { inicio:new Date(0), fin:new Date(0) };
+        const inicio = fechaRD.utc;
+        // Ancla jueves 00:00, incluye todas las horas del viernes.
+        inicio.setUTCDate(inicio.getUTCDate() - ((fechaRD.weekday - 4 + 7) % 7));
         const fin = new Date(inicio);
-        fin.setDate(fin.getDate() + 2);
+        fin.setUTCDate(fin.getUTCDate() + 2);
         return { inicio, fin };
     }
 
     function obtenerInicioPeriodoOnFire(fechaValor) {
-        const fecha = new Date(fechaValor);
-        if (Number.isNaN(fecha.getTime())) return null;
-        if (![4,5].includes(fecha.getDay())) return null;
-        const inicio = new Date(fecha);
-        if (fecha.getDay() === 5) inicio.setDate(inicio.getDate() - 1);
-        inicio.setHours(0, 0, 0, 0);
+        const fechaRD = obtenerFechaRDConsultas(fechaValor);
+        if (!fechaRD || ![4,5].includes(fechaRD.weekday)) return null;
+        const inicio = fechaRD.utc;
+        if (fechaRD.weekday === 5) inicio.setUTCDate(inicio.getUTCDate() - 1);
         return inicio;
     }
 
@@ -1308,9 +1319,9 @@
         const meses = new Map();
 
         partidas.forEach(partida => {
-            const fecha = new Date(partida.timestamp);
-            if (Number.isNaN(fecha.getTime())) return;
-            const clave = `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, '0')}`;
+            const fecha = obtenerFechaRDConsultas(partida.timestamp);
+            if (!fecha) return;
+            const clave = `${fecha.year}-${String(fecha.month).padStart(2, '0')}`;
             if (!meses.has(clave)) meses.set(clave, new Map());
             const jugadoresMes = meses.get(clave);
 
