@@ -1069,150 +1069,191 @@
         window.supabaseClient = db;
     }
 
-    const CONSULTAS_CACHE_KEY = 'cache_consultas_historicas_v2';
+
+    // Fuente oficial: resultados consolidados. La tabla de manos se utiliza para
+    // anotar, pero no debe descargarse sin paginar ni reconstruirse por cada consulta.
+    const CONSULTAS_CACHE_KEY = 'cache_consultas_resumen_v4';
+    let consultasCargadas = false;
+    let consultasActualizando = false;
+
+    async function descargarCompletoConsultas(tabla, columnas, ordenar) {
+        const filas = [];
+        const porPagina = 500;
+        let offset = 0;
+        while (true) {
+            let query = db.from(tabla).select(columnas);
+            for (const campo of ordenar) {
+                query = query.order(campo, { ascending: true });
+            }
+            const { data, error } = await query.range(offset, offset + porPagina - 1);
+            if (error) throw error;
+            filas.push(...(data || []));
+            if (!data || data.length < porPagina) break;
+            offset += porPagina;
+        }
+        return filas;
+    }
 
     async function obtenerDatosConsultas() {
-        const [perfilesRes, manosRes] = await Promise.all([
-            db.from('perfiles').select('*'),
-            db.from('manos').select('*, mesas(*)').eq('anulada', false).order('created_at', { ascending: true })
+        const [perfiles, resumen, historico] = await Promise.all([
+            descargarCompletoConsultas('perfiles',
+                'id,username,nombre_completo,rol,estado,elo,es_manual', ['id']),
+            descargarCompletoConsultas('partidas_resumen',
+                'mesa_id,fecha_final,jugador1_id,jugador2_id,jugador3_id,jugador4_id,cuenta_tabla_general,puntos_pareja1,puntos_pareja2,ganador,es_lisa,clutch_winner_team',
+                ['fecha_final','mesa_id']),
+            descargarCompletoConsultas('historial_legacy_ranking_diario',
+                'fecha,perfil_id,partidas,ganadas,perdidas', ['fecha','perfil_id'])
         ]);
+        return { perfiles, resumen, historico, actualizadoEn: new Date().toISOString() };
+    }
 
-        if (perfilesRes.error) throw perfilesRes.error;
-        if (manosRes.error) throw manosRes.error;
-
-        return {
-            perfiles: perfilesRes.data || [],
-            manos: manosRes.data || []
-        };
+    function informarFuenteConsultas(mensaje) {
+        const elemento = document.getElementById('consultas-estado');
+        if (elemento) elemento.textContent = mensaje;
     }
 
     function aplicarDatosConsultas(datos) {
-        const perfiles = Array.isArray(datos?.perfiles) ? datos.perfiles : [];
-        const manos = Array.isArray(datos?.manos) ? datos.manos : [];
-        window._perfilesGlobal = perfiles;
-        window._manosGlobal = manos;
-        inicializarSelectores(perfiles, manos);
+        if (!Array.isArray(datos?.perfiles) || !Array.isArray(datos?.resumen) ||
+            !Array.isArray(datos?.historico)) return false;
+        window._perfilesGlobal = datos.perfiles;
+        window._resumenGlobal = datos.resumen;
+        window._historicoGlobal = datos.historico;
+        consultasCargadas = true;
+        inicializarSelectores(datos.perfiles);
+        informarFuenteConsultas('Datos oficiales de partidas cerradas. Historial individual desde enero; enfrentamientos identificables desde septiembre de 2026.');
+        const seleccion = document.getElementById('select-jugador-filtro')?.value;
+        if (seleccion) consultarPerfilJugador();
+        if (document.getElementById('resultado-enfrentamiento-individual')?.dataset.consultado === '1') {
+            calcularEnfrentamientoIndividual();
+        }
+        if (document.getElementById('resultado-enfrentamiento')?.dataset.consultado === '1') {
+            calcularEnfrentamientoDirecto();
+        }
+        return true;
     }
 
     window.addEventListener('DOMContentLoaded', async () => {
-        if (typeof cargarConCache === 'function') {
-            await cargarConCache(CONSULTAS_CACHE_KEY, obtenerDatosConsultas, aplicarDatosConsultas);
+        let cacheDisponible = false;
+        try {
+            const cache = JSON.parse(localStorage.getItem(CONSULTAS_CACHE_KEY) || 'null');
+            cacheDisponible = aplicarDatosConsultas(cache);
+            if (cacheDisponible) informarFuenteConsultas('Cargando resultados actualizados del servidor…');
+        } catch (_) {}
+
+        if (navigator.onLine === false) {
+            if (!cacheDisponible) informarFuenteConsultas('Sin conexión: las consultas todavía no tienen datos descargados.');
             return;
         }
-
+        if (consultasActualizando) return;
+        consultasActualizando = true;
         try {
-            aplicarDatosConsultas(await obtenerDatosConsultas());
+            const datos = await obtenerDatosConsultas();
+            try { localStorage.setItem(CONSULTAS_CACHE_KEY, JSON.stringify(datos)); } catch (_) {}
+            aplicarDatosConsultas(datos);
         } catch (error) {
-            console.error('Error al cargar los datos de Consultas:', error);
+            console.error('[CONSULTAS] No se pudo sincronizar:', error);
+            informarFuenteConsultas(cacheDisponible
+                ? 'Sincronización pendiente. Se muestran datos guardados anteriormente en este dispositivo.'
+                : 'No fue posible cargar las estadísticas. Comprueba la conexión y vuelve a abrir Consultas.');
+        } finally {
+            consultasActualizando = false;
         }
     });
 
-    function inicializarSelectores(perfiles, manos) {
-        if (!perfiles) return;
-        const jugadoresIds = new Set(
-            perfiles
-                .filter(p => p.es_jugador === true || p.es_jugador === 1 || p.rol === 'jugador' || p.rol === 'admin' || p.rol === 'super_admin')
-                .map(p => p.id)
-        );
+    function inicializarSelectores(perfiles) {
+        if (!Array.isArray(perfiles)) return;
 
-        let jugadoresOrdenados = perfiles
-            .filter(p => jugadoresIds.has(p.id))
-            .sort((a, b) => (a.username || a.nombre_completo || '').localeCompare(b.username || b.nombre_completo || ''));
-
-        let selPerfil = document.getElementById('select-jugador-filtro');
-        if (selPerfil) {
-            selPerfil.innerHTML = '<option value="">Seleccionar jugador...</option>';
-            jugadoresOrdenados.forEach(p => {
-                let nombre = p.username || p.nombre_completo || 'Jugador';
-                let opt = document.createElement('option');
-                opt.value = p.id;
-                opt.textContent = nombre;
-                selPerfil.appendChild(opt);
-            });
+        // Incluir invitados/miembros manuales que hayan disputado partidas reales.
+        const participantes = new Set();
+        for (const partida of (window._resumenGlobal || [])) {
+            for (const campo of ['jugador1_id','jugador2_id','jugador3_id','jugador4_id']) {
+                if (partida[campo]) participantes.add(partida[campo]);
+            }
         }
+        for (const fila of (window._historicoGlobal || [])) {
+            if (fila.partidas > 0 && fila.perfil_id) participantes.add(fila.perfil_id);
+        }
+        const jugadoresOrdenados = perfiles
+            .filter(p => participantes.has(p.id) ||
+                ['jugador','admin','super_admin'].includes(p.rol))
+            .sort((a,b) => (a.username || a.nombre_completo || '').localeCompare(
+                b.username || b.nombre_completo || '', 'es'));
 
-        ['h2h-p1-j1', 'h2h-p1-j2', 'h2h-p2-j1', 'h2h-p2-j2', 'h2h-ind-j1', 'h2h-ind-j2'].forEach(idSelect => {
-            let sel = document.getElementById(idSelect);
-            if (!sel) return;
-            sel.innerHTML = '<option value="">Jugador...</option>';
+        for (const idSelect of [
+            'select-jugador-filtro','h2h-ind-j1','h2h-ind-j2',
+            'h2h-p1-j1','h2h-p1-j2','h2h-p2-j1','h2h-p2-j2'
+        ]) {
+            const sel = document.getElementById(idSelect);
+            if (!sel) continue;
+            const valorAnterior = sel.value;
+            sel.replaceChildren();
+            const placeholder = document.createElement('option');
+            placeholder.value = '';
+            placeholder.textContent = idSelect === 'select-jugador-filtro'
+                ? 'Seleccionar jugador…' : 'Jugador…';
+            sel.appendChild(placeholder);
             jugadoresOrdenados.forEach(p => {
-                let nombre = p.username || p.nombre_completo || 'Jugador';
-                let opt = document.createElement('option');
-                opt.value = p.id;
-                opt.textContent = nombre;
-                sel.appendChild(opt);
+                const opcion = document.createElement('option');
+                opcion.value = p.id;
+                opcion.textContent = p.username || p.nombre_completo || 'Jugador';
+                sel.appendChild(opcion);
             });
-        });
+            if (valorAnterior && jugadoresOrdenados.some(p => p.id === valorAnterior)) {
+                sel.value = valorAnterior;
+            }
+        }
+    }
+
+    function escaparHtmlConsultas(texto) {
+        return String(texto ?? '').replace(/[&<>"']/g, c => ({
+            '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'
+        }[c]));
+    }
+
+    function obtenerResumenHistoricoConsultas() {
+        const totales = new Map();
+        for (const fila of (window._historicoGlobal || [])) {
+            const id = fila.perfil_id;
+            if (!id) continue;
+            if (!totales.has(id)) totales.set(id, { partidas:0, ganadas:0, perdidas:0 });
+            const v = totales.get(id);
+            v.partidas += Number(fila.partidas) || 0;
+            v.ganadas += Number(fila.ganadas) || 0;
+            v.perdidas += Number(fila.perdidas) || 0;
+        }
+        return totales;
     }
 
     function obtenerPartidasAgrupadas() {
-        const manos = [...(window._manosGlobal || [])];
-        const obtenerFecha = (mano) => {
-            const valor = mano?.created_at || mano?.creado_en || mano?.fecha_hora || mano?.mesas?.created_at;
-            const fecha = valor ? new Date(valor) : null;
-            return fecha && !Number.isNaN(fecha.getTime()) ? fecha : null;
-        };
-
-        const mesasMap = new Map();
-        manos.forEach(mano => {
-            const mesa = mano?.mesas;
-            const mesaId = mano?.mesa_id || mesa?.id || mesa?.mesa_id;
-            if (!mesa || !mesaId || mano.anulada) return;
-            if (!mesasMap.has(mesaId)) mesasMap.set(mesaId, { mesaId, mesa, manos: [] });
-            mesasMap.get(mesaId).manos.push(mano);
-        });
-
-        const partidas = [];
-        mesasMap.forEach(({ mesaId, mesa, manos: manosMesa }) => {
-            const t1 = [mesa.jugador1_id, mesa.jugador3_id].filter(Boolean);
-            const t2 = [mesa.jugador2_id, mesa.jugador4_id].filter(Boolean);
-            if (t1.length !== 2 || t2.length !== 2 || new Set([...t1, ...t2]).size !== 4) return;
-
-            const limitePuntos = Math.max(1, Number(mesa.limite_puntos) || 200);
-            let pts1 = 0;
-            let pts2 = 0;
-            let amenazaClutch1 = false;
-            let amenazaClutch2 = false;
-
-            manosMesa
-                .sort((a, b) => (obtenerFecha(a)?.getTime() || 0) - (obtenerFecha(b)?.getTime() || 0))
-                .forEach(mano => {
-                    pts1 += Number(mano.puntos_pareja1) || 0;
-                    pts2 += Number(mano.puntos_pareja2) || 0;
-
-                    if (pts2 >= 180 && pts2 - pts1 >= 100) amenazaClutch1 = true;
-                    if (pts1 >= 180 && pts1 - pts2 >= 100) amenazaClutch2 = true;
-
-                    if (pts1 < limitePuntos && pts2 < limitePuntos) return;
-
-                    const ganador = pts1 > pts2 ? 1 : (pts2 > pts1 ? 2 : Number(mano.ganador_pareja) || 0);
-                    const fechaFinal = obtenerFecha(mano);
-                    if (ganador === 1 || ganador === 2) {
-                        partidas.push({
-                            mesaId: `${mesaId}_${partidas.length}`,
-                            timestamp: fechaFinal?.getTime() || 0,
-                            fecha_hora: fechaFinal?.toISOString() || null,
-                            t1: [...t1],
-                            t2: [...t2],
-                            pts1,
-                            pts2,
-                            ganador,
-                            esLisa: ganador === 1 ? pts2 === 0 : pts1 === 0,
-                            clutchWinnerTeam: ganador === 1 && amenazaClutch1 ? 1 : (ganador === 2 && amenazaClutch2 ? 2 : 0)
-                        });
-                    }
-
-                    pts1 = 0;
-                    pts2 = 0;
-                    amenazaClutch1 = false;
-                    amenazaClutch2 = false;
-                });
-        });
-
-        return partidas.sort((a, b) => a.timestamp - b.timestamp);
+        // Un registro consolidado = una partida real. Sin duplicación por mano.
+        return (window._resumenGlobal || [])
+            .filter(r => r.cuenta_tabla_general !== false)
+            .map(r => {
+                const t1 = [r.jugador1_id, r.jugador3_id];
+                const t2 = [r.jugador2_id, r.jugador4_id];
+                const fecha = new Date(r.fecha_final || 0);
+                if (t1.concat(t2).some(id => !id) ||
+                    new Set([...t1,...t2]).size !== 4 ||
+                    ![1,2].includes(Number(r.ganador)) ||
+                    Number.isNaN(fecha.getTime())) return null;
+                return {
+                    mesaId: r.mesa_id,
+                    timestamp: fecha.getTime(),
+                    fecha_hora: r.fecha_final,
+                    t1, t2,
+                    pts1: Number(r.puntos_pareja1) || 0,
+                    pts2: Number(r.puntos_pareja2) || 0,
+                    ganador: Number(r.ganador),
+                    esLisa: r.es_lisa === true,
+                    clutchWinnerTeam: Number(r.clutch_winner_team) || 0
+                };
+            })
+            .filter(Boolean)
+            .sort((a,b) => a.timestamp - b.timestamp || a.mesaId.localeCompare(b.mesaId));
     }
 
-    function obtenerVentanaOnFireConsulta(referencia = new Date()) {
+
+        function obtenerVentanaOnFireConsulta(referencia = new Date()) {
         const ahora = new Date(referencia);
         const inicio = new Date(ahora);
         const diasDesdeJueves = (ahora.getDay() - 4 + 7) % 7;
