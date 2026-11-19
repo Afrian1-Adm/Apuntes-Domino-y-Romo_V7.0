@@ -1428,7 +1428,7 @@
         poner('hist-antes',n(d.historicas));poner('hist-ahora',n(d.detalladas));
         poner('hist-cobertura',d.invalidas>0
             ? '⚠ Se detectaron '+d.invalidas+' fechas históricas inconsistentes. No se inventaron resultados.'
-            : d.dias+' jornadas anteriores validadas · '+(d.historicas+d.detalladas-d.noClasifican)+
+            : d.dias+' fechas históricas validadas · '+(d.historicas+d.detalladas-d.noClasifican)+
               ' computan para la Tabla General y '+d.noClasifican+
               ' partidas recientes se muestran aparte como no clasificables. Los versus antiguos no conservan rivales.');
         const orden=[...d.meses.entries()].sort((a,b)=>b[0].localeCompare(a[0]));
