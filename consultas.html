@@ -1017,7 +1017,7 @@
                 <h3>Enfrentamientos Directos (Individual)</h3>
             </div>
             <p class="section-description">
-                Compara el historial cara a cara entre dos jugadores como rivales directos.
+                Compara resultados oficiales en mesas cerradas desde septiembre de 2026. Los registros anteriores no identifican rivales.
             </p>
             <div class="compare-form">
                 <div class="compare-selectors">
@@ -1036,7 +1036,7 @@
                 <h3>Enfrentamientos Directos (Parejas)</h3>
             </div>
             <p class="section-description">
-                Compara el historial cara a cara entre dos parejas de jugadores.
+                Consulta los duelos oficiales entre dos parejas exactas desde septiembre de 2026. El orden de los integrantes no afecta el resultado.
             </p>
             <div class="compare-form">
                 <!-- Dos columnas fijas: cada columna corresponde a una pareja -->
@@ -1599,7 +1599,7 @@
             divFrentes.innerHTML = arrayFrentes.length === 0 ? `<div class="empty-state">Sin datos suficientes.</div>` :
                 arrayFrentes.map((f, idx) => `
                     <div class="performance-row">
-                        <span>${idx + 1}. <strong>${f.nombre}</strong></span>
+                        <span>${idx + 1}. <strong>${escaparHtmlConsultas(f.nombre)}</strong></span>
                         <span class="performance-value good">${f.efectividad.toFixed(1)}% (${f.vic}/${f.total})</span>
                     </div>
                 `).join('');
@@ -1616,7 +1616,7 @@
             divRivales.innerHTML = arrayRivales.length === 0 ? `<div class="empty-state">Sin derrotas registradas.</div>` :
                 arrayRivales.map((r, idx) => `
                     <div class="performance-row">
-                        <span>${idx + 1}. <strong>${r.nombre}</strong></span>
+                        <span>${idx + 1}. <strong>${escaparHtmlConsultas(r.nombre)}</strong></span>
                         <span class="performance-value danger">${r.derrotas} derrotas</span>
                     </div>
                 `).join('');
@@ -1641,6 +1641,11 @@
             return;
         }
 
+        if (!consultasCargadas) {
+            contenedorRes.textContent = 'Cargando resultados oficiales. Intenta nuevamente cuando termine la sincronización.';
+            contenedorRes.style.display = 'block';
+            return;
+        }
         const perfiles = window._perfilesGlobal || [];
         const partidas = obtenerPartidasAgrupadas();
 
@@ -1671,13 +1676,14 @@
             return p ? (p.username || p.nombre_completo) : 'Jugador';
         };
 
-        let nombreJ1 = getNombre(j1);
-        let nombreJ2 = getNombre(j2);
+        let nombreJ1 = escaparHtmlConsultas(getNombre(j1));
+        let nombreJ2 = escaparHtmlConsultas(getNombre(j2));
 
         contenedorRes.style.display = 'block';
+        contenedorRes.dataset.consultado = '1';
 
         if (totalPartidasH2H === 0) {
-            contenedorRes.innerHTML = `<div class="empty-state">No se registran enfrentamientos directos como rivales entre ambos jugadores.</div>`;
+            contenedorRes.innerHTML = `<div class="empty-state">No hay enfrentamientos directos identificables entre estos jugadores desde septiembre de 2026. Los resultados anteriores solo conservan estadísticas individuales, sin información de rivales.</div>`;
             return;
         }
 
@@ -1686,7 +1692,7 @@
 
         contenedorRes.innerHTML = `
             <div class="comparison-result">
-                <div class="comparison-summary">Total de partidas enfrentados: ${totalPartidasH2H}</div>
+                <div class="comparison-summary">Partidas oficiales como rivales: ${totalPartidasH2H} · Desde septiembre de 2026</div>
                 <div class="comparison-scoreboard">
                     <div class="comparison-side">
                         <div class="comparison-side-label">Jugador 1</div>
@@ -1730,6 +1736,11 @@
             return;
         }
 
+        if (!consultasCargadas) {
+            contenedorRes.textContent = 'Cargando resultados oficiales. Intenta nuevamente cuando termine la sincronización.';
+            contenedorRes.style.display = 'block';
+            return;
+        }
         const perfiles = window._perfilesGlobal || [];
         const partidas = obtenerPartidasAgrupadas();
 
@@ -1767,13 +1778,14 @@
             return p ? (p.username || p.nombre_completo) : 'Jugador';
         };
 
-        let nombreP1 = `${getNombre(p1j1)} & ${getNombre(p1j2)}`;
-        let nombreP2 = `${getNombre(p2j1)} & ${getNombre(p2j2)}`;
+        let nombreP1 = escaparHtmlConsultas(getNombre(p1j1)) + ' &amp; ' + escaparHtmlConsultas(getNombre(p1j2));
+        let nombreP2 = escaparHtmlConsultas(getNombre(p2j1)) + ' &amp; ' + escaparHtmlConsultas(getNombre(p2j2));
 
         contenedorRes.style.display = 'block';
+        contenedorRes.dataset.consultado = '1';
 
         if (totalPartidasH2H === 0) {
-            contenedorRes.innerHTML = `<div class="empty-state">No se registran enfrentamientos directos entre ambas parejas.</div>`;
+            contenedorRes.innerHTML = `<div class="empty-state">No hay enfrentamientos registrados entre estas parejas exactas desde septiembre de 2026. Se consideran ambos órdenes dentro de cada pareja y ambos lados de la mesa.</div>`;
             return;
         }
 
@@ -1782,7 +1794,7 @@
 
         contenedorRes.innerHTML = `
             <div class="comparison-result">
-                <div class="comparison-summary">Total de partidas jugadas: ${totalPartidasH2H}</div>
+                <div class="comparison-summary">Partidas oficiales entre estas parejas: ${totalPartidasH2H} · Desde septiembre de 2026</div>
                 <div class="comparison-scoreboard">
                     <div class="comparison-side">
                         <div class="comparison-side-label">Pareja 1</div>
