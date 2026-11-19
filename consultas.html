@@ -914,6 +914,7 @@
             </div>
             <span class="page-pill">📊 Estadísticas</span>
         </header>
+        <p id="consultas-estado" class="section-description" role="status" aria-live="polite">Cargando estadísticas del club…</p>
 
         <main class="consultas-grid">
 
@@ -924,7 +925,7 @@
                 <h3>Perfil y Galardones del Jugador</h3>
             </div>
             <p class="section-description">
-                Selecciona un jugador para consultar sus métricas directamente desde las vistas de la base de datos.
+                Consulta su historial individual completo y sus galardones calculados con partidas detalladas.
             </p>
             <div class="profile-selector">
                 <select id="select-jugador-filtro" class="field-control" aria-label="Seleccionar jugador para consultar" onchange="consultarPerfilJugador()">
@@ -933,6 +934,7 @@
             </div>
 
             <div id="resultado-perfil-jugador" class="profile-results" style="display: none;">
+                <p id="val-historial-origen" class="section-description" role="status"></p>
                 
                 <!-- Insignias y Condecoraciones -->
                 <div>
@@ -982,7 +984,7 @@
                     <div class="metric-card">
                         <div class="metric-label">⭐ Jugador del Mes</div>
                         <div id="val-jugador-mes" class="metric-value">0</div>
-                        <div class="metric-detail">Veces obt.</div>
+                        <div class="metric-detail">Veces obt. desde septiembre</div>
                     </div>
                     <!-- Tarjeta Balance de Lisas -->
                     <div class="metric-card">
@@ -1015,7 +1017,7 @@
                 <h3>Enfrentamientos Directos (Individual)</h3>
             </div>
             <p class="section-description">
-                Compara el historial cara a cara entre dos jugadores como rivales directos.
+                Compara resultados oficiales en mesas cerradas desde septiembre de 2026. Los registros anteriores no identifican rivales.
             </p>
             <div class="compare-form">
                 <div class="compare-selectors">
@@ -1034,7 +1036,7 @@
                 <h3>Enfrentamientos Directos (Parejas)</h3>
             </div>
             <p class="section-description">
-                Compara el historial cara a cara entre dos parejas de jugadores.
+                Consulta los duelos oficiales entre dos parejas exactas desde septiembre de 2026. El orden de los integrantes no afecta el resultado.
             </p>
             <div class="compare-form">
                 <!-- Dos columnas fijas: cada columna corresponde a una pareja -->
@@ -1069,179 +1071,222 @@
         window.supabaseClient = db;
     }
 
-    const CONSULTAS_CACHE_KEY = 'cache_consultas_historicas_v2';
+
+    // Fuente oficial: resultados consolidados. La tabla de manos se utiliza para
+    // anotar, pero no debe descargarse sin paginar ni reconstruirse por cada consulta.
+    const CONSULTAS_CACHE_KEY = 'cache_consultas_resumen_v4';
+    let consultasCargadas = false;
+    let consultasActualizando = false;
+
+    async function descargarCompletoConsultas(tabla, columnas, ordenar) {
+        const filas = [];
+        const porPagina = 500;
+        let offset = 0;
+        while (true) {
+            let query = db.from(tabla).select(columnas);
+            for (const campo of ordenar) {
+                query = query.order(campo, { ascending: true });
+            }
+            const { data, error } = await query.range(offset, offset + porPagina - 1);
+            if (error) throw error;
+            filas.push(...(data || []));
+            if (!data || data.length < porPagina) break;
+            offset += porPagina;
+        }
+        return filas;
+    }
 
     async function obtenerDatosConsultas() {
-        const [perfilesRes, manosRes] = await Promise.all([
-            db.from('perfiles').select('*'),
-            db.from('manos').select('*, mesas(*)').eq('anulada', false).order('created_at', { ascending: true })
+        const [perfiles, resumen, historico] = await Promise.all([
+            descargarCompletoConsultas('perfiles',
+                'id,username,nombre_completo,rol,estado,elo,es_manual', ['id']),
+            descargarCompletoConsultas('partidas_resumen',
+                'mesa_id,fecha_final,jugador1_id,jugador2_id,jugador3_id,jugador4_id,cuenta_tabla_general,puntos_pareja1,puntos_pareja2,ganador,es_lisa,clutch_winner_team',
+                ['fecha_final','mesa_id']),
+            descargarCompletoConsultas('historial_legacy_ranking_diario',
+                'fecha,perfil_id,partidas,ganadas,perdidas', ['fecha','perfil_id'])
         ]);
+        return { perfiles, resumen, historico, actualizadoEn: new Date().toISOString() };
+    }
 
-        if (perfilesRes.error) throw perfilesRes.error;
-        if (manosRes.error) throw manosRes.error;
-
-        return {
-            perfiles: perfilesRes.data || [],
-            manos: manosRes.data || []
-        };
+    function informarFuenteConsultas(mensaje) {
+        const elemento = document.getElementById('consultas-estado');
+        if (elemento) elemento.textContent = mensaje;
     }
 
     function aplicarDatosConsultas(datos) {
-        const perfiles = Array.isArray(datos?.perfiles) ? datos.perfiles : [];
-        const manos = Array.isArray(datos?.manos) ? datos.manos : [];
-        window._perfilesGlobal = perfiles;
-        window._manosGlobal = manos;
-        inicializarSelectores(perfiles, manos);
+        if (!Array.isArray(datos?.perfiles) || !Array.isArray(datos?.resumen) ||
+            !Array.isArray(datos?.historico)) return false;
+        window._perfilesGlobal = datos.perfiles;
+        window._resumenGlobal = datos.resumen;
+        window._historicoGlobal = datos.historico;
+        consultasCargadas = true;
+        inicializarSelectores(datos.perfiles);
+        informarFuenteConsultas('Datos oficiales de partidas cerradas. Historial individual desde enero; enfrentamientos identificables desde septiembre de 2026.');
+        const seleccion = document.getElementById('select-jugador-filtro')?.value;
+        if (seleccion) consultarPerfilJugador();
+        if (document.getElementById('resultado-enfrentamiento-individual')?.dataset.consultado === '1') {
+            calcularEnfrentamientoIndividual();
+        }
+        if (document.getElementById('resultado-enfrentamiento')?.dataset.consultado === '1') {
+            calcularEnfrentamientoDirecto();
+        }
+        return true;
     }
 
     window.addEventListener('DOMContentLoaded', async () => {
-        if (typeof cargarConCache === 'function') {
-            await cargarConCache(CONSULTAS_CACHE_KEY, obtenerDatosConsultas, aplicarDatosConsultas);
+        let cacheDisponible = false;
+        try {
+            const cache = JSON.parse(localStorage.getItem(CONSULTAS_CACHE_KEY) || 'null');
+            cacheDisponible = aplicarDatosConsultas(cache);
+            if (cacheDisponible) informarFuenteConsultas('Cargando resultados actualizados del servidor…');
+        } catch (_) {}
+
+        if (navigator.onLine === false) {
+            if (!cacheDisponible) informarFuenteConsultas('Sin conexión: las consultas todavía no tienen datos descargados.');
             return;
         }
-
+        if (consultasActualizando) return;
+        consultasActualizando = true;
         try {
-            aplicarDatosConsultas(await obtenerDatosConsultas());
+            const datos = await obtenerDatosConsultas();
+            try { localStorage.setItem(CONSULTAS_CACHE_KEY, JSON.stringify(datos)); } catch (_) {}
+            aplicarDatosConsultas(datos);
         } catch (error) {
-            console.error('Error al cargar los datos de Consultas:', error);
+            console.error('[CONSULTAS] No se pudo sincronizar:', error);
+            informarFuenteConsultas(cacheDisponible
+                ? 'Sincronización pendiente. Se muestran datos guardados anteriormente en este dispositivo.'
+                : 'No fue posible cargar las estadísticas. Comprueba la conexión y vuelve a abrir Consultas.');
+        } finally {
+            consultasActualizando = false;
         }
     });
 
-    function inicializarSelectores(perfiles, manos) {
-        if (!perfiles) return;
-        const jugadoresIds = new Set(
-            perfiles
-                .filter(p => p.es_jugador === true || p.es_jugador === 1 || p.rol === 'jugador' || p.rol === 'admin' || p.rol === 'super_admin')
-                .map(p => p.id)
-        );
+    function inicializarSelectores(perfiles) {
+        if (!Array.isArray(perfiles)) return;
 
-        let jugadoresOrdenados = perfiles
-            .filter(p => jugadoresIds.has(p.id))
-            .sort((a, b) => (a.username || a.nombre_completo || '').localeCompare(b.username || b.nombre_completo || ''));
-
-        let selPerfil = document.getElementById('select-jugador-filtro');
-        if (selPerfil) {
-            selPerfil.innerHTML = '<option value="">Seleccionar jugador...</option>';
-            jugadoresOrdenados.forEach(p => {
-                let nombre = p.username || p.nombre_completo || 'Jugador';
-                let opt = document.createElement('option');
-                opt.value = p.id;
-                opt.textContent = nombre;
-                selPerfil.appendChild(opt);
-            });
+        // Incluir invitados/miembros manuales que hayan disputado partidas reales.
+        const participantes = new Set();
+        for (const partida of (window._resumenGlobal || [])) {
+            for (const campo of ['jugador1_id','jugador2_id','jugador3_id','jugador4_id']) {
+                if (partida[campo]) participantes.add(partida[campo]);
+            }
         }
+        for (const fila of (window._historicoGlobal || [])) {
+            if (fila.partidas > 0 && fila.perfil_id) participantes.add(fila.perfil_id);
+        }
+        const jugadoresOrdenados = perfiles
+            .filter(p => participantes.has(p.id) ||
+                ['jugador','admin','super_admin'].includes(p.rol))
+            .sort((a,b) => (a.username || a.nombre_completo || '').localeCompare(
+                b.username || b.nombre_completo || '', 'es'));
 
-        ['h2h-p1-j1', 'h2h-p1-j2', 'h2h-p2-j1', 'h2h-p2-j2', 'h2h-ind-j1', 'h2h-ind-j2'].forEach(idSelect => {
-            let sel = document.getElementById(idSelect);
-            if (!sel) return;
-            sel.innerHTML = '<option value="">Jugador...</option>';
+        for (const idSelect of [
+            'select-jugador-filtro','h2h-ind-j1','h2h-ind-j2',
+            'h2h-p1-j1','h2h-p1-j2','h2h-p2-j1','h2h-p2-j2'
+        ]) {
+            const sel = document.getElementById(idSelect);
+            if (!sel) continue;
+            const valorAnterior = sel.value;
+            sel.replaceChildren();
+            const placeholder = document.createElement('option');
+            placeholder.value = '';
+            placeholder.textContent = idSelect === 'select-jugador-filtro'
+                ? 'Seleccionar jugador…' : 'Jugador…';
+            sel.appendChild(placeholder);
             jugadoresOrdenados.forEach(p => {
-                let nombre = p.username || p.nombre_completo || 'Jugador';
-                let opt = document.createElement('option');
-                opt.value = p.id;
-                opt.textContent = nombre;
-                sel.appendChild(opt);
+                const opcion = document.createElement('option');
+                opcion.value = p.id;
+                opcion.textContent = p.username || p.nombre_completo || 'Jugador';
+                sel.appendChild(opcion);
             });
-        });
+            if (valorAnterior && jugadoresOrdenados.some(p => p.id === valorAnterior)) {
+                sel.value = valorAnterior;
+            }
+        }
+    }
+
+    function escaparHtmlConsultas(texto) {
+        return String(texto ?? '').replace(/[&<>"']/g, c => ({
+            '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'
+        }[c]));
+    }
+
+    function obtenerResumenHistoricoConsultas() {
+        const totales = new Map();
+        for (const fila of (window._historicoGlobal || [])) {
+            const id = fila.perfil_id;
+            if (!id) continue;
+            if (!totales.has(id)) totales.set(id, { partidas:0, ganadas:0, perdidas:0 });
+            const v = totales.get(id);
+            v.partidas += Number(fila.partidas) || 0;
+            v.ganadas += Number(fila.ganadas) || 0;
+            v.perdidas += Number(fila.perdidas) || 0;
+        }
+        return totales;
     }
 
     function obtenerPartidasAgrupadas() {
-        const manos = [...(window._manosGlobal || [])];
-        const obtenerFecha = (mano) => {
-            const valor = mano?.created_at || mano?.creado_en || mano?.fecha_hora || mano?.mesas?.created_at;
-            const fecha = valor ? new Date(valor) : null;
-            return fecha && !Number.isNaN(fecha.getTime()) ? fecha : null;
-        };
+        // Un registro consolidado = una partida real. Sin duplicación por mano.
+        return (window._resumenGlobal || [])
+            .filter(r => r.cuenta_tabla_general !== false)
+            .map(r => {
+                const t1 = [r.jugador1_id, r.jugador3_id];
+                const t2 = [r.jugador2_id, r.jugador4_id];
+                const fecha = new Date(r.fecha_final || 0);
+                if (t1.concat(t2).some(id => !id) ||
+                    new Set([...t1,...t2]).size !== 4 ||
+                    ![1,2].includes(Number(r.ganador)) ||
+                    Number.isNaN(fecha.getTime())) return null;
+                return {
+                    mesaId: r.mesa_id,
+                    timestamp: fecha.getTime(),
+                    fecha_hora: r.fecha_final,
+                    t1, t2,
+                    pts1: Number(r.puntos_pareja1) || 0,
+                    pts2: Number(r.puntos_pareja2) || 0,
+                    ganador: Number(r.ganador),
+                    esLisa: r.es_lisa === true,
+                    clutchWinnerTeam: Number(r.clutch_winner_team) || 0
+                };
+            })
+            .filter(Boolean)
+            .sort((a,b) => a.timestamp - b.timestamp || a.mesaId.localeCompare(b.mesaId));
+    }
 
-        const mesasMap = new Map();
-        manos.forEach(mano => {
-            const mesa = mano?.mesas;
-            const mesaId = mano?.mesa_id || mesa?.id || mesa?.mesa_id;
-            if (!mesa || !mesaId || mano.anulada) return;
-            if (!mesasMap.has(mesaId)) mesasMap.set(mesaId, { mesaId, mesa, manos: [] });
-            mesasMap.get(mesaId).manos.push(mano);
-        });
 
-        const partidas = [];
-        mesasMap.forEach(({ mesaId, mesa, manos: manosMesa }) => {
-            const t1 = [mesa.jugador1_id, mesa.jugador3_id].filter(Boolean);
-            const t2 = [mesa.jugador2_id, mesa.jugador4_id].filter(Boolean);
-            if (t1.length !== 2 || t2.length !== 2 || new Set([...t1, ...t2]).size !== 4) return;
+    
 
-            const limitePuntos = Math.max(1, Number(mesa.limite_puntos) || 200);
-            let pts1 = 0;
-            let pts2 = 0;
-            let amenazaClutch1 = false;
-            let amenazaClutch2 = false;
-
-            manosMesa
-                .sort((a, b) => (obtenerFecha(a)?.getTime() || 0) - (obtenerFecha(b)?.getTime() || 0))
-                .forEach(mano => {
-                    pts1 += Number(mano.puntos_pareja1) || 0;
-                    pts2 += Number(mano.puntos_pareja2) || 0;
-
-                    if (pts2 >= 180 && pts2 - pts1 >= 100) amenazaClutch1 = true;
-                    if (pts1 >= 180 && pts1 - pts2 >= 100) amenazaClutch2 = true;
-
-                    if (pts1 < limitePuntos && pts2 < limitePuntos) return;
-
-                    const ganador = pts1 > pts2 ? 1 : (pts2 > pts1 ? 2 : Number(mano.ganador_pareja) || 0);
-                    const fechaFinal = obtenerFecha(mano);
-                    if (ganador === 1 || ganador === 2) {
-                        partidas.push({
-                            mesaId: `${mesaId}_${partidas.length}`,
-                            timestamp: fechaFinal?.getTime() || 0,
-                            fecha_hora: fechaFinal?.toISOString() || null,
-                            t1: [...t1],
-                            t2: [...t2],
-                            pts1,
-                            pts2,
-                            ganador,
-                            esLisa: ganador === 1 ? pts2 === 0 : pts1 === 0,
-                            clutchWinnerTeam: ganador === 1 && amenazaClutch1 ? 1 : (ganador === 2 && amenazaClutch2 ? 2 : 0)
-                        });
-                    }
-
-                    pts1 = 0;
-                    pts2 = 0;
-                    amenazaClutch1 = false;
-                    amenazaClutch2 = false;
-                });
-        });
-
-        return partidas.sort((a, b) => a.timestamp - b.timestamp);
+    function obtenerFechaRDConsultas(fechaValor) {
+        const fecha = new Date(fechaValor);
+        if (Number.isNaN(fecha.getTime())) return null;
+        const partes = new Intl.DateTimeFormat('en-US', {
+            timeZone: 'America/Santo_Domingo', year: 'numeric', month: '2-digit', day: '2-digit'
+        }).formatToParts(fecha);
+        const extraer = tipo => Number(partes.find(p => p.type === tipo)?.value || 0);
+        const year = extraer('year'), month = extraer('month'), day = extraer('day');
+        if (!year || !month || !day) return null;
+        const utc = new Date(Date.UTC(year, month - 1, day));
+        return { year, month, day, utc, weekday: utc.getUTCDay() };
     }
 
     function obtenerVentanaOnFireConsulta(referencia = new Date()) {
-        const ahora = new Date(referencia);
-        const inicio = new Date(ahora);
-        const diasDesdeJueves = (ahora.getDay() - 4 + 7) % 7;
-        inicio.setDate(ahora.getDate() - diasDesdeJueves);
-        inicio.setHours(8, 0, 0, 0);
-        if (ahora < inicio) inicio.setDate(inicio.getDate() - 7);
-
+        const fechaRD = obtenerFechaRDConsultas(referencia);
+        if (!fechaRD) return { inicio:new Date(0), fin:new Date(0) };
+        const inicio = fechaRD.utc;
+        // Ancla jueves 00:00, incluye todas las horas del viernes.
+        inicio.setUTCDate(inicio.getUTCDate() - ((fechaRD.weekday - 4 + 7) % 7));
         const fin = new Date(inicio);
-        fin.setDate(fin.getDate() + 1);
-        fin.setHours(6, 0, 0, 0);
+        fin.setUTCDate(fin.getUTCDate() + 2);
         return { inicio, fin };
     }
 
     function obtenerInicioPeriodoOnFire(fechaValor) {
-        const fecha = new Date(fechaValor);
-        if (Number.isNaN(fecha.getTime())) return null;
-        const minutos = fecha.getHours() * 60 + fecha.getMinutes();
-        const inicio = new Date(fecha);
-
-        if (fecha.getDay() === 4 && minutos >= 8 * 60) {
-            inicio.setHours(8, 0, 0, 0);
-            return inicio;
-        }
-        if (fecha.getDay() === 5 && minutos < 6 * 60) {
-            inicio.setDate(inicio.getDate() - 1);
-            inicio.setHours(8, 0, 0, 0);
-            return inicio;
-        }
-        return null;
+        const fechaRD = obtenerFechaRDConsultas(fechaValor);
+        if (!fechaRD || ![4,5].includes(fechaRD.weekday)) return null;
+        const inicio = fechaRD.utc;
+        if (fechaRD.weekday === 5) inicio.setUTCDate(inicio.getUTCDate() - 1);
+        return inicio;
     }
 
     function calcularHistorialOnFire(partidas, jugadorId, referencia = new Date()) {
@@ -1274,9 +1319,9 @@
         const meses = new Map();
 
         partidas.forEach(partida => {
-            const fecha = new Date(partida.timestamp);
-            if (Number.isNaN(fecha.getTime())) return;
-            const clave = `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, '0')}`;
+            const fecha = obtenerFechaRDConsultas(partida.timestamp);
+            if (!fecha) return;
+            const clave = `${fecha.year}-${String(fecha.month).padStart(2, '0')}`;
             if (!meses.has(clave)) meses.set(clave, new Map());
             const jugadoresMes = meses.get(clave);
 
@@ -1312,35 +1357,34 @@
     }
 
 
+
     function calcularRankingActualComoPerfil(perfiles, jugadorId) {
-        const rankingGlobal = {};
-        obtenerPartidasAgrupadas().forEach(partida => {
-            partida.t1.forEach(id => {
-                if (!rankingGlobal[id]) rankingGlobal[id] = { jugadas: 0, ganadas: 0 };
-                rankingGlobal[id].jugadas++;
-                if (partida.ganador === 1) rankingGlobal[id].ganadas++;
-            });
-
-            partida.t2.forEach(id => {
-                if (!rankingGlobal[id]) rankingGlobal[id] = { jugadas: 0, ganadas: 0 };
-                rankingGlobal[id].jugadas++;
-                if (partida.ganador === 2) rankingGlobal[id].ganadas++;
-            });
-        });
-
-        const listaRanking = Object.keys(rankingGlobal)
-            .map(id => {
-                const data = rankingGlobal[id];
-                const ef = data.jugadas > 0 ? data.ganadas / data.jugadas : 0;
-                return { id, ganadas: data.ganadas, jugadas: data.jugadas, ef };
-            })
-            .sort((a, b) => b.ef - a.ef || b.jugadas - a.jugadas || b.ganadas - a.ganadas);
-
-        const posicion = listaRanking.findIndex(item => item.id === jugadorId);
-        return {
-            posicion: posicion !== -1 ? posicion + 1 : null,
-            total: listaRanking.length
+        const rankingGlobal = new Map();
+        const incluir = (id, jugadas, ganadas) => {
+            if (!id) return;
+            if (!rankingGlobal.has(id)) rankingGlobal.set(id, { jugadas:0, ganadas:0 });
+            const estadistica = rankingGlobal.get(id);
+            estadistica.jugadas += Number(jugadas) || 0;
+            estadistica.ganadas += Number(ganadas) || 0;
         };
+        obtenerResumenHistoricoConsultas().forEach((r,id) => {
+            incluir(id, r.partidas, r.ganadas);
+        });
+        obtenerPartidasAgrupadas().forEach(partida => {
+            partida.t1.forEach(id => incluir(id, 1, partida.ganador === 1 ? 1 : 0));
+            partida.t2.forEach(id => incluir(id, 1, partida.ganador === 2 ? 1 : 0));
+        });
+        const aptos = new Set(perfiles.filter(p => p.rol !== 'invitado').map(p => p.id));
+        const listaRanking = [...rankingGlobal.entries()]
+            .filter(([id, r]) => aptos.has(id) && r.jugadas > 0)
+            .map(([id, data]) => ({
+                id, ganadas:data.ganadas, jugadas:data.jugadas,
+                ef:data.ganadas / data.jugadas
+            }))
+            .sort((a,b) => b.ef - a.ef || b.jugadas - a.jugadas ||
+                b.ganadas - a.ganadas || a.id.localeCompare(b.id));
+        const posicion = listaRanking.findIndex(item => item.id === jugadorId);
+        return { posicion: posicion >= 0 ? posicion + 1 : null, total:listaRanking.length };
     }
 
     function consultarPerfilJugador() {
@@ -1362,9 +1406,14 @@
         const rankingActual = calcularRankingActualComoPerfil(perfiles, jugadorId);
         let posicionRanking = rankingActual.posicion;
 
-        let totalPartidas = 0;
-        let victorias = 0;
-        let derrotas = 0;
+        // Enero-agosto conserva resultados individuales por día (sin parejas).
+        // Sumarlos a septiembre en adelante evita que el perfil muestre
+        // partidas ganadas/perdidas inferiores al ranking histórico.
+        const legacy = obtenerResumenHistoricoConsultas().get(jugadorId) ||
+            { partidas:0, ganadas:0, perdidas:0 };
+        let totalPartidas = legacy.partidas;
+        let victorias = legacy.ganadas;
+        let derrotas = legacy.perdidas;
         let lisasFavor = 0;
         let lisasContra = 0;
         let frentesMap = {}; 
@@ -1463,6 +1512,13 @@
                 : 'Aún no hay partidas finalizadas';
         }
 
+        const detalleHistorico = document.getElementById('val-historial-origen');
+        if (detalleHistorico) {
+            detalleHistorico.textContent =
+                'Historial: ' + legacy.partidas + ' partidas anteriores + ' +
+                (totalPartidas - legacy.partidas) + ' partidas detalladas. ' +
+                'Rachas, lisas, premios y rivales requieren partidas con integrantes identificados.';
+        }
         let porcentajeGral = totalPartidas > 0 ? ((victorias / totalPartidas) * 100).toFixed(1) : 0;
         const elEfectividadGral = document.getElementById('val-efectividad-gral');
         const elEfectividadDetalle = document.getElementById('val-efectividad-detalle');
@@ -1554,7 +1610,7 @@
             divFrentes.innerHTML = arrayFrentes.length === 0 ? `<div class="empty-state">Sin datos suficientes.</div>` :
                 arrayFrentes.map((f, idx) => `
                     <div class="performance-row">
-                        <span>${idx + 1}. <strong>${f.nombre}</strong></span>
+                        <span>${idx + 1}. <strong>${escaparHtmlConsultas(f.nombre)}</strong></span>
                         <span class="performance-value good">${f.efectividad.toFixed(1)}% (${f.vic}/${f.total})</span>
                     </div>
                 `).join('');
@@ -1571,7 +1627,7 @@
             divRivales.innerHTML = arrayRivales.length === 0 ? `<div class="empty-state">Sin derrotas registradas.</div>` :
                 arrayRivales.map((r, idx) => `
                     <div class="performance-row">
-                        <span>${idx + 1}. <strong>${r.nombre}</strong></span>
+                        <span>${idx + 1}. <strong>${escaparHtmlConsultas(r.nombre)}</strong></span>
                         <span class="performance-value danger">${r.derrotas} derrotas</span>
                     </div>
                 `).join('');
@@ -1596,6 +1652,11 @@
             return;
         }
 
+        if (!consultasCargadas) {
+            contenedorRes.textContent = 'Cargando resultados oficiales. Intenta nuevamente cuando termine la sincronización.';
+            contenedorRes.style.display = 'block';
+            return;
+        }
         const perfiles = window._perfilesGlobal || [];
         const partidas = obtenerPartidasAgrupadas();
 
@@ -1626,13 +1687,14 @@
             return p ? (p.username || p.nombre_completo) : 'Jugador';
         };
 
-        let nombreJ1 = getNombre(j1);
-        let nombreJ2 = getNombre(j2);
+        let nombreJ1 = escaparHtmlConsultas(getNombre(j1));
+        let nombreJ2 = escaparHtmlConsultas(getNombre(j2));
 
         contenedorRes.style.display = 'block';
+        contenedorRes.dataset.consultado = '1';
 
         if (totalPartidasH2H === 0) {
-            contenedorRes.innerHTML = `<div class="empty-state">No se registran enfrentamientos directos como rivales entre ambos jugadores.</div>`;
+            contenedorRes.innerHTML = `<div class="empty-state">No hay enfrentamientos directos identificables entre estos jugadores desde septiembre de 2026. Los resultados anteriores solo conservan estadísticas individuales, sin información de rivales.</div>`;
             return;
         }
 
@@ -1641,7 +1703,7 @@
 
         contenedorRes.innerHTML = `
             <div class="comparison-result">
-                <div class="comparison-summary">Total de partidas enfrentados: ${totalPartidasH2H}</div>
+                <div class="comparison-summary">Partidas oficiales como rivales: ${totalPartidasH2H} · Desde septiembre de 2026</div>
                 <div class="comparison-scoreboard">
                     <div class="comparison-side">
                         <div class="comparison-side-label">Jugador 1</div>
@@ -1685,6 +1747,11 @@
             return;
         }
 
+        if (!consultasCargadas) {
+            contenedorRes.textContent = 'Cargando resultados oficiales. Intenta nuevamente cuando termine la sincronización.';
+            contenedorRes.style.display = 'block';
+            return;
+        }
         const perfiles = window._perfilesGlobal || [];
         const partidas = obtenerPartidasAgrupadas();
 
@@ -1722,13 +1789,14 @@
             return p ? (p.username || p.nombre_completo) : 'Jugador';
         };
 
-        let nombreP1 = `${getNombre(p1j1)} & ${getNombre(p1j2)}`;
-        let nombreP2 = `${getNombre(p2j1)} & ${getNombre(p2j2)}`;
+        let nombreP1 = escaparHtmlConsultas(getNombre(p1j1)) + ' &amp; ' + escaparHtmlConsultas(getNombre(p1j2));
+        let nombreP2 = escaparHtmlConsultas(getNombre(p2j1)) + ' &amp; ' + escaparHtmlConsultas(getNombre(p2j2));
 
         contenedorRes.style.display = 'block';
+        contenedorRes.dataset.consultado = '1';
 
         if (totalPartidasH2H === 0) {
-            contenedorRes.innerHTML = `<div class="empty-state">No se registran enfrentamientos directos entre ambas parejas.</div>`;
+            contenedorRes.innerHTML = `<div class="empty-state">No hay enfrentamientos registrados entre estas parejas exactas desde septiembre de 2026. Se consideran ambos órdenes dentro de cada pareja y ambos lados de la mesa.</div>`;
             return;
         }
 
@@ -1737,7 +1805,7 @@
 
         contenedorRes.innerHTML = `
             <div class="comparison-result">
-                <div class="comparison-summary">Total de partidas jugadas: ${totalPartidasH2H}</div>
+                <div class="comparison-summary">Partidas oficiales entre estas parejas: ${totalPartidasH2H} · Desde septiembre de 2026</div>
                 <div class="comparison-scoreboard">
                     <div class="comparison-side">
                         <div class="comparison-side-label">Pareja 1</div>
