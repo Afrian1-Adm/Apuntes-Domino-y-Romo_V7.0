@@ -836,24 +836,6 @@
             transform-origin: top left;
         }
     }
-
-    .hist-total-grid {display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:12px 0}
-    .hist-kpi {background:var(--surface2);border:1px solid var(--line);border-radius:12px;text-align:center;padding:12px 5px}
-    .hist-kpi strong {display:block;font-size:1.4rem;color:var(--blue);font-variant-numeric:tabular-nums}
-    .hist-kpi small {display:block;color:var(--muted);line-height:1.35}
-    .hist-meses {overflow-x:auto;margin:12px 0}
-    .hist-meses table {width:100%;border-collapse:collapse;font-size:.82rem}
-    .hist-meses th,.hist-meses td {border-bottom:1px solid var(--line);padding:8px 5px;text-align:right}
-    .hist-meses th:first-child,.hist-meses td:first-child {text-align:left}
-    .hist-meses th {color:var(--muted)}
-    .hist-controls {display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin:12px 0}
-    .hist-controls select {flex:1;min-width:130px}
-    .hist-controls button {flex:1;min-width:145px}
-    .hist-fila {padding:10px 0;border-bottom:1px solid var(--line);font-size:.82rem}
-    .hist-fila strong {display:block;overflow-wrap:anywhere}
-    .hist-fila p {color:var(--muted);margin:4px 0 0;line-height:1.5}
-    @media(max-width:420px){.hist-kpi strong{font-size:1.16rem}.hist-kpi small{font-size:.69rem}.hist-meses th,.hist-meses td{font-size:.75rem;padding:7px 3px}}
-
     </style>
 
     <!-- Ajuste exclusivo para iPhone/iPad: respeta notch, Dynamic Island y barra inferior
@@ -930,32 +912,10 @@
                     <p>Análisis avanzado, ELO, rangos y enfrentamientos</p>
                 </div>
             </div>
-            <span class="page-pill">📊 Consultas · v105</span>
+            <span class="page-pill">📊 Estadísticas</span>
         </header>
-        <p id="consultas-estado" class="section-description" role="status" aria-live="polite">Consultas v105 · Cargando estadísticas del club…</p>
 
         <main class="consultas-grid">
-
-
-        <section class="card full-card" id="historial-total-club">
-            <div class="seccion-titulo"><span>📅</span><h3>Historial completo desde el 8 de enero</h3></div>
-            <p class="section-description">Incluye todas las partidas disponibles desde el 8 de enero de 2026. Los registros antiguos se muestran por jornada y los recientes por mesa. Las partidas fuera de la tabla general se distinguen sin alterar el ranking.</p>
-            <div class="hist-total-grid">
-                <div class="hist-kpi"><strong id="hist-suma">—</strong><small>Partidas registradas</small></div>
-                <div class="hist-kpi"><strong id="hist-antes">—</strong><small>Enero–agosto, acumuladas</small></div>
-                <div class="hist-kpi"><strong id="hist-ahora">—</strong><small>Septiembre en adelante, todas</small></div>
-            </div>
-            <p id="hist-cobertura" class="section-description" role="status">Cargando historial…</p>
-            <div id="hist-meses" class="hist-meses"></div>
-            <div class="hist-controls">
-                <select id="hist-mes" class="field-control" onchange="filtrarHistorialClub()" aria-label="Mes del historial">
-                    <option value="todos">Todos los meses</option>
-                </select>
-                <button type="button" class="btn secondary" id="hist-ver" onclick="alternarHistorialClub()" aria-expanded="false">Ver registros por fecha</button>
-            </div>
-            <div id="hist-registros"></div>
-            <button type="button" id="hist-mas" class="btn secondary" onclick="masHistorialClub()" style="display:none;width:100%">Ver más registros</button>
-        </section>
 
         <!-- 1. CONSULTA DE JUGADOR INDIVIDUAL -->
         <div class="card profile-card">
@@ -964,18 +924,8 @@
                 <h3>Perfil y Galardones del Jugador</h3>
             </div>
             <p class="section-description">
-                Consulta su historial individual completo y sus galardones calculados con partidas detalladas.
+                Selecciona un jugador para consultar sus métricas directamente desde las vistas de la base de datos.
             </p>
-            <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:0 0 12px;">
-                <p id="consultas-integridad" role="status" aria-live="polite"
-                    style="margin:0;flex:1;min-width:190px;font-size:.82rem;color:var(--muted);line-height:1.5;">
-                    Cargando partidas recientes…
-                </p>
-                <button type="button" id="consultas-actualizar" class="btn secondary"
-                    onclick="actualizarConsultasManual()" style="padding:9px 12px;min-height:38px;">
-                    ↻ Actualizar datos
-                </button>
-            </div>
             <div class="profile-selector">
                 <select id="select-jugador-filtro" class="field-control" aria-label="Seleccionar jugador para consultar" onchange="consultarPerfilJugador()">
                     <option value="">Seleccionar jugador...</option>
@@ -983,7 +933,6 @@
             </div>
 
             <div id="resultado-perfil-jugador" class="profile-results" style="display: none;">
-                <p id="val-historial-origen" class="section-description" role="status"></p>
                 
                 <!-- Insignias y Condecoraciones -->
                 <div>
@@ -1033,7 +982,7 @@
                     <div class="metric-card">
                         <div class="metric-label">⭐ Jugador del Mes</div>
                         <div id="val-jugador-mes" class="metric-value">0</div>
-                        <div class="metric-detail">Veces obt. desde septiembre</div>
+                        <div class="metric-detail">Veces obt.</div>
                     </div>
                     <!-- Tarjeta Balance de Lisas -->
                     <div class="metric-card">
@@ -1066,7 +1015,7 @@
                 <h3>Enfrentamientos Directos (Individual)</h3>
             </div>
             <p class="section-description">
-                Compara resultados oficiales en mesas cerradas desde septiembre de 2026. Los registros anteriores no identifican rivales.
+                Compara el historial cara a cara entre dos jugadores como rivales directos.
             </p>
             <div class="compare-form">
                 <div class="compare-selectors">
@@ -1085,7 +1034,7 @@
                 <h3>Enfrentamientos Directos (Parejas)</h3>
             </div>
             <p class="section-description">
-                Consulta los duelos oficiales entre dos parejas exactas desde septiembre de 2026. El orden de los integrantes no afecta el resultado.
+                Compara el historial cara a cara entre dos parejas de jugadores.
             </p>
             <div class="compare-form">
                 <!-- Dos columnas fijas: cada columna corresponde a una pareja -->
@@ -1123,7 +1072,7 @@
 
     // Fuente oficial: resultados consolidados. La tabla de manos se utiliza para
     // anotar, pero no debe descargarse sin paginar ni reconstruirse por cada consulta.
-    const CONSULTAS_CACHE_KEY = 'cache_consultas_resumen_v7';
+    const CONSULTAS_CACHE_KEY = 'cache_consultas_resumen_v8';
     let consultasCargadas = false;
     let consultasActualizando = false;
     let consultasClienteLectura = null;
@@ -1173,7 +1122,7 @@
         return filas;
     }
 
-    async function obtenerDatosConsultas() {
+    const obtenerDatosConsultas = async function obtenerDatosConsultas() {
         const publico = obtenerClientePublicoConsultas();
         const [perfiles, resumen, historico] = await Promise.all([
             descargarCompletoConsultas('perfiles',
@@ -1195,7 +1144,7 @@
         if (elemento) elemento.textContent = 'Consultas v105 · ' + mensaje;
     }
 
-    function aplicarDatosConsultas(datos) {
+    const aplicarDatosConsultas = function aplicarDatosConsultas(datos) {
         if (!Array.isArray(datos?.perfiles) || !Array.isArray(datos?.resumen) ||
             !Array.isArray(datos?.historico) || datos.resumen.length === 0) {
             return false; // Nunca tratar una caché sin partidos recientes como completa.
@@ -1205,7 +1154,6 @@
         window._historicoGlobal = datos.historico;
         consultasCargadas = true;
         inicializarSelectores(datos.perfiles);
-        renderHistorialClub();
         const oficiales = datos.resumen.filter(p => p.cuenta_tabla_general !== false).length;
         const fechaActualizacion = datos.actualizadoEn
             ? new Intl.DateTimeFormat('es-DO', { timeZone:'America/Santo_Domingo', dateStyle:'short', timeStyle:'short' })
@@ -1272,7 +1220,7 @@
         sincronizarConsultas();
     });
 
-    function inicializarSelectores(perfiles) {
+    const inicializarSelectores = function inicializarSelectores(perfiles) {
         if (!Array.isArray(perfiles)) return;
 
         // Incluir invitados/miembros manuales que hayan disputado partidas reales.
@@ -1336,7 +1284,7 @@
         return totales;
     }
 
-    function obtenerPartidasAgrupadas() {
+    const obtenerPartidasAgrupadas = function obtenerPartidasAgrupadas() {
         // Un registro consolidado = una partida real. Sin duplicación por mano.
         return (window._resumenGlobal || [])
             .filter(r => r.cuenta_tabla_general !== false)
@@ -1367,119 +1315,6 @@
 
     
 
-
-    // Cada partido histórico aporta cuatro participaciones (dos ganadas y dos perdidas).
-    // No se reconstruyen ni se atribuyen adversarios históricos inexistentes.
-    let histExpandido=false, histMostrados=35;
-    function datosHistorialClub(){
-        const porDia=new Map(), meses=new Map(), registros=[];
-        const addMes=(key,origen,num)=>{
-            if(!meses.has(key))meses.set(key,{historicas:0,detalladas:0});
-            meses.get(key)[origen]+=num;
-        };
-        for(const h of (window._historicoGlobal||[])){
-            if(!h.fecha||h.fecha<'2026-01-08')continue;
-            if(!porDia.has(h.fecha))porDia.set(h.fecha,{p:0,v:0,d:0});
-            const dia=porDia.get(h.fecha);
-            dia.p+=Number(h.partidas)||0;dia.v+=Number(h.ganadas)||0;dia.d+=Number(h.perdidas)||0;
-        }
-        let historicas=0,invalidas=0;
-        for(const [fecha,dia] of porDia){
-            if(dia.p%4!==0||dia.v!==dia.d||dia.v*2!==dia.p){invalidas++;continue;}
-            const n=dia.p/4;historicas+=n;addMes(fecha.slice(0,7),'historicas',n);
-            registros.push({fecha,ts:Date.parse(fecha+'T12:00:00-04:00'),titulo:fecha+' · '+n+' partidas históricas',sub:'Acumulado de jornada: no se conservaron los integrantes de cada mesa.'});
-        }
-        const names=new Map((window._perfilesGlobal||[]).map(p=>[p.id,p.username||p.nombre_completo||'Jugador']));
-        const oficiales=obtenerPartidasAgrupadas().map(p=>({...p,fueraRanking:false}));
-        // Partidas especiales, registradas pero excluidas expresamente de la
-        // Tabla General. Se muestran en el historial, no afectan la eficiencia.
-        const extraordinarias=(window._resumenGlobal||[])
-            .filter(r=>r.cuenta_tabla_general===false)
-            .map(r=>{
-                const f=new Date(r.fecha_final||0);
-                const jugadores=[r.jugador1_id,r.jugador2_id,r.jugador3_id,r.jugador4_id];
-                if(jugadores.some(id=>!id)||new Set(jugadores).size!==4||
-                    ![1,2].includes(Number(r.ganador))||Number.isNaN(f.getTime()))return null;
-                return { timestamp:f.getTime(), t1:[r.jugador1_id,r.jugador3_id],
-                    t2:[r.jugador2_id,r.jugador4_id],ganador:Number(r.ganador),
-                    pts1:Number(r.puntos_pareja1)||0,pts2:Number(r.puntos_pareja2)||0,
-                    fueraRanking:true };
-            }).filter(Boolean);
-        const detalladas=[...oficiales,...extraordinarias].filter(p=>{
-            const f=obtenerFechaRDConsultas(p.timestamp);
-            return f&&[f.year,String(f.month).padStart(2,'0'),String(f.day).padStart(2,'0')].join('-')>='2026-01-08';
-        });
-        for(const p of detalladas){
-            const f=obtenerFechaRDConsultas(p.timestamp);
-            const fecha=[f.year,String(f.month).padStart(2,'0'),String(f.day).padStart(2,'0')].join('-');
-            addMes(fecha.slice(0,7),'detalladas',1);
-            const equipo=ids=>ids.map(id=>names.get(id)||'Sin nombre').join(' y ');
-            const hora=new Intl.DateTimeFormat('es-DO',{timeZone:'America/Santo_Domingo',timeStyle:'short'}).format(new Date(p.timestamp));
-            registros.push({fecha,ts:p.timestamp,titulo:fecha+' · '+equipo(p.t1)+' vs. '+equipo(p.t2),sub:(p.fueraRanking?'Fuera de Tabla General · ':'Oficial · ')+'Ganó pareja '+p.ganador+' · '+p.pts1+'–'+p.pts2+' · '+hora});
-        }
-        registros.sort((a,b)=>b.ts-a.ts);
-        return {historicas,detalladas:detalladas.length,noClasifican:detalladas.filter(p=>p.fueraRanking).length,invalidas,dias:porDia.size,meses,registros};
-    }
-    function renderHistorialClub(){
-        if(!consultasCargadas)return;
-        const d=datosHistorialClub(),n=x=>new Intl.NumberFormat('es-DO').format(x);
-        const poner=(id,value)=>{const e=document.getElementById(id);if(e)e.textContent=value;};
-        poner('hist-suma',n(d.historicas+d.detalladas));
-        poner('hist-antes',n(d.historicas));poner('hist-ahora',n(d.detalladas));
-        poner('hist-cobertura',d.invalidas>0
-            ? '⚠ Se detectaron '+d.invalidas+' fechas históricas inconsistentes. No se inventaron resultados.'
-            : d.dias+' fechas históricas validadas · '+(d.historicas+d.detalladas-d.noClasifican)+
-              ' computan para la Tabla General y '+d.noClasifican+
-              ' partidas recientes se muestran aparte como no clasificables. Los versus antiguos no conservan rivales.');
-        const orden=[...d.meses.entries()].sort((a,b)=>b[0].localeCompare(a[0]));
-        const donde=document.getElementById('hist-meses');
-        if(donde){
-            const table=document.createElement('table'),thead=document.createElement('thead');
-            const hrow=document.createElement('tr');
-            for(const label of ['Mes','Históricas','Detalladas','Total']){
-                const th=document.createElement('th');th.textContent=label;hrow.appendChild(th);
-            }
-            thead.appendChild(hrow);table.appendChild(thead);
-            const body=document.createElement('tbody');
-            for(const [mes,counts] of orden){
-                const row=document.createElement('tr');
-                for(const value of [mes,n(counts.historicas),n(counts.detalladas),n(counts.historicas+counts.detalladas)]){
-                    const td=document.createElement('td');td.textContent=value;row.appendChild(td);
-                }
-                body.appendChild(row);
-            }
-            table.appendChild(body);donde.replaceChildren(table);
-        }
-        const sel=document.getElementById('hist-mes');
-        if(sel){
-            const selected=sel.value;
-            sel.replaceChildren();
-            const all=document.createElement('option');all.value='todos';all.textContent='Todos los meses';sel.appendChild(all);
-            for(const [key] of orden){const option=document.createElement('option');option.value=key;option.textContent=key;sel.appendChild(option);}
-            if(orden.some(([key])=>key===selected))sel.value=selected;
-        }
-        renderFilasHistorialClub(d);
-    }
-    function renderFilasHistorialClub(data){
-        const view=document.getElementById('hist-registros');
-        if(!view)return;
-        const button=document.getElementById('hist-ver'),more=document.getElementById('hist-mas');
-        if(button){button.textContent=histExpandido?'Ocultar registros':'Ver registros por fecha';button.setAttribute('aria-expanded',String(histExpandido));}
-        view.replaceChildren();
-        if(!histExpandido){if(more)more.style.display='none';return;}
-        const d=data||datosHistorialClub(),sel=document.getElementById('hist-mes')?.value||'todos';
-        const filtered=d.registros.filter(r=>sel==='todos'||r.fecha.slice(0,7)===sel);
-        for(const r of filtered.slice(0,histMostrados)){
-            const div=document.createElement('div');div.className='hist-fila';
-            const strong=document.createElement('strong');strong.textContent=r.titulo;
-            const p=document.createElement('p');p.textContent=r.sub;
-            div.append(strong,p);view.appendChild(div);
-        }
-        if(more){const falta=Math.max(0,filtered.length-histMostrados);more.style.display=falta?'block':'none';more.textContent='Ver más registros ('+falta+' restantes)';}
-    }
-    function alternarHistorialClub(){histExpandido=!histExpandido;histMostrados=35;renderFilasHistorialClub();}
-    function masHistorialClub(){histMostrados+=35;renderFilasHistorialClub();}
-    function filtrarHistorialClub(){histExpandido=true;histMostrados=35;renderFilasHistorialClub();}
 
     function obtenerFechaRDConsultas(fechaValor) {
         const fecha = new Date(fechaValor);
